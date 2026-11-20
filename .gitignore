@@ -1,0 +1,8 @@
+node_modules
+.next
+.env
+*.log
+*.tsbuildinfo
+public/uploads/
+data/task-files/
+data/finance-files/
