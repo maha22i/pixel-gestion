@@ -8,7 +8,14 @@ import {
   QrCode, CalendarCheck,
 } from "lucide-react";
 
-type Item = { href: string; label: string; icon: keyof typeof ICONS };
+type Group = "moi" | "pilotage" | "activite" | "finance";
+type Item = { href: string; label: string; icon: keyof typeof ICONS; group?: Group };
+const GROUPS: { key: Group; label: string }[] = [
+  { key: "moi", label: "Mon espace" },
+  { key: "pilotage", label: "Pilotage" },
+  { key: "activite", label: "Activité" },
+  { key: "finance", label: "Ventes & finance" },
+];
 const ICONS = {
   dashboard: LayoutDashboard, clients: Users, projets: FolderKanban, catalogue: Package,
   devis: FileText, factures: Receipt, contrats: ScrollText, paiements: Wallet, depenses: TrendingDown,
@@ -49,24 +56,31 @@ export function Sidebar({
           key={it.href}
           href={it.href}
           onClick={() => setOpen(false)}
-          className={`group flex items-center gap-3 rounded-xl px-3 py-2.5 text-[15px] font-semibold transition-all ${
+          aria-current={active ? "page" : undefined}
+          className={`group relative flex items-center gap-3 rounded-lg px-3 py-[6px] text-[14px] font-semibold transition-colors ${
             active
-              ? "bg-white/[0.14] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)]"
-              : "text-white/70 hover:bg-white/[0.08] hover:text-white"
+              ? "bg-white/[0.12] text-white"
+              : "text-white/65 hover:bg-white/[0.06] hover:text-white"
           }`}
         >
-          <Icon size={18} className={active ? "text-gold" : "text-white/70 group-hover:text-white"} />
+          {active && <span aria-hidden className="absolute -left-3 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-gold" />}
+          <Icon size={17} className={active ? "text-gold" : "text-white/55 group-hover:text-white"} />
           {it.label}
-          {active && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-gold" />}
         </Link>
       );
     });
+
+  const heading = (label: string, first = false) => (
+    <p className={`px-3 pb-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white/35 ${first ? "pt-0" : "pt-3"}`}>{label}</p>
+  );
+
+  const grouped = GROUPS.map((g) => ({ ...g, list: items.filter((it) => (it.group ?? "pilotage") === g.key) })).filter((g) => g.list.length);
 
   return (
     <>
       <header className="sticky top-0 z-50 border-b border-white/10 bg-navy px-3 pt-[env(safe-area-inset-top)] lg:hidden">
         <div className="flex h-14 items-center justify-between gap-2">
-          <img src="/logo.png" alt="Pixel Nomade" className="h-8 w-auto max-w-[42vw] object-contain object-left" />
+          <img src="/logo-light.png" alt="Pixel Nomade" className="h-9 w-auto max-w-[42vw] object-contain object-left" />
           <div className="flex items-center gap-0.5">
             <div className="text-white [&_summary]:text-white [&_summary]:hover:bg-white/10">{bell}</div>
             <details className="relative">
@@ -99,40 +113,43 @@ export function Sidebar({
       </header>
       <aside
         data-open={open ? "true" : "false"}
-        className={`fixed bottom-0 left-0 top-[calc(3.5rem+env(safe-area-inset-top))] z-40 flex w-[min(19.5rem,88vw)] shrink-0 flex-col border-r border-white/10 bg-navy shadow-2xl transition-transform duration-200 lg:sticky lg:bottom-auto lg:top-0 lg:z-20 lg:h-screen lg:w-72 lg:translate-x-0 lg:shadow-none ${
+        className={`fixed bottom-0 left-0 top-[calc(3.5rem+env(safe-area-inset-top))] z-40 flex w-[min(19.5rem,88vw)] shrink-0 flex-col border-r border-white/10 bg-navy shadow-2xl transition-transform duration-200 lg:sticky lg:bottom-auto lg:top-0 lg:z-20 lg:h-screen lg:w-64 lg:translate-x-0 lg:shadow-none ${
           open ? "translate-x-0" : "-translate-x-full max-lg:invisible"
         }`}
       >
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute -top-12 -right-12 h-44 w-44 rounded-full bg-gold/25 blur-3xl" />
-          <div className="absolute bottom-20 left-0 h-52 w-52 rounded-full bg-white/[0.08] blur-3xl" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_100%_0%,rgba(245,166,35,0.16),transparent_40%),linear-gradient(180deg,#2C3E50_0%,#22303E_100%)]" />
+        <div className="relative hidden px-5 pb-3 pt-4 lg:block">
+          <Link href="/" aria-label="Accueil">
+            <img src="/logo-light.png" alt="Pixel Nomade" className="h-11 w-auto object-contain object-left" />
+          </Link>
         </div>
-        <div className="relative hidden px-5 pb-5 pt-6 lg:block">
-          <img src="/logo.png" alt="Pixel Nomade" className="h-12 w-auto object-contain object-left" />
-          <p className="mt-2 text-[11px] uppercase tracking-[0.18em] text-white/45">Pilotage d’entreprise</p>
-        </div>
-        <nav className="relative flex-1 space-y-1 overflow-y-auto px-3 pb-4 pt-4 lg:pt-0">
-          {nav(items)}
+        <nav className="relative flex-1 space-y-0.5 overflow-y-auto px-3 pb-4 pt-4 [scrollbar-width:thin] lg:pt-1">
+          {grouped.map((g, i) => (
+            <div key={g.key} className="space-y-0.5">
+              {heading(g.label, i === 0)}
+              {nav(g.list)}
+            </div>
+          ))}
           {adminItems.length > 0 && (
-            <>
-              <p className="px-3 pb-1 pt-6 text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">Administration</p>
+            <div className="space-y-0.5">
+              {heading("Administration")}
               {nav(adminItems)}
-            </>
+            </div>
           )}
         </nav>
-        <div className="relative border-t border-white/10 p-3">
-          <Link href="/profil" className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2.5 transition hover:bg-white/10">
-            <span className="grid h-8 w-8 place-items-center rounded-full bg-gold font-bold text-navy-900">
+        <div className="relative flex items-center gap-1 border-t border-white/10 p-3">
+          <Link href="/profil" className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-2 py-1.5 transition hover:bg-white/[0.06]">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gold text-sm font-bold text-navy-900">
               {userName.charAt(0).toUpperCase()}
             </span>
             <span className="min-w-0">
               <span className="block truncate text-sm font-bold text-white">{userName}</span>
-              <span className="block text-[12px] text-white/45">{roleLabel}</span>
+              <span className="block truncate text-[11px] text-white/45">{roleLabel}</span>
             </span>
           </Link>
           <form action={logout}>
-            <button className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold text-white/[0.65] transition hover:bg-white/[0.06] hover:text-white">
-              <LogOut size={16} /> Déconnexion
+            <button className="grid h-9 w-9 place-items-center rounded-lg text-white/55 transition hover:bg-white/[0.08] hover:text-white" aria-label="Déconnexion" title="Déconnexion">
+              <LogOut size={17} />
             </button>
           </form>
         </div>

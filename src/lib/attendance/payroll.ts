@@ -16,9 +16,28 @@ export type DayRow = {
   lateMin: number;
   detail: string;
   missingDepart: boolean;
+  /** Minutes prévues par l'horaire ce jour-là (0 si repos, férié, absence justifiée). */
+  expectedMin: number;
+  /** Minutes au-delà de l'horaire prévu (tout le temps travaillé un jour de repos ou férié). */
+  overtimeMin: number;
 };
 
-export type MonthTotals = { hoursMin: number; hoursLabel: string; daysWorked: number; lateMin: number; absences: number };
+export type MonthTotals = {
+  hoursMin: number; hoursLabel: string; daysWorked: number; lateMin: number; absences: number;
+  /** Nombre de jours avec retard. */
+  lateDays: number;
+  /** Absences justifiées (congé, maladie…), en jours. */
+  justified: number;
+  /** Heures prévues sur les jours travaillés. */
+  expectedMin: number;
+  overtimeMin: number;
+  overtimeLabel: string;
+};
+
+/** Durée de la journée de travail prévue par l'horaire (ex. 08:00 → 17:00 = 540 min). */
+export function expectedDayMinutes(schedule: Schedule) {
+  return Math.max(0, parseHM(schedule.endTime) - parseHM(schedule.startTime));
+}
 
 const COUNTED = new Set(["valide"]);
 
@@ -94,6 +113,12 @@ export function buildDayRow(input: {
       : missingDepart
         ? "Départ oublié"
         : pendingDetail;
+  const plannedDay = workday && !input.holidayName && !justified;
+  const expectedMin = plannedDay && (status === "present" || status === "mission") ? expectedDayMinutes(input.schedule) : 0;
+  // Heures sup : uniquement sur des journées complètes (départ pointé), pour ne pas compter une journée en cours.
+  const overtimeMin = paired.minutes > 0 && !paired.missingDepart
+    ? Math.max(0, paired.minutes - (plannedDay ? expectedDayMinutes(input.schedule) : 0))
+    : 0;
   return {
     day: input.day,
     status,
@@ -105,6 +130,8 @@ export function buildDayRow(input: {
     lateMin,
     detail,
     missingDepart,
+    expectedMin,
+    overtimeMin,
   };
 }
 
@@ -127,11 +154,16 @@ export function monthRows(input: {
   const totals = rows.reduce<MonthTotals>((acc, row) => {
     acc.hoursMin += row.hoursMin;
     acc.lateMin += row.lateMin;
+    if (row.lateMin > 0) acc.lateDays += 1;
     if (row.status === "present" || row.status === "mission") acc.daysWorked += 1;
     if (row.status === "absent") acc.absences += 1;
+    if (row.status === "justifie") acc.justified += 1;
+    acc.expectedMin += row.expectedMin;
+    acc.overtimeMin += row.overtimeMin;
     return acc;
-  }, { hoursMin: 0, hoursLabel: "", daysWorked: 0, lateMin: 0, absences: 0 });
+  }, { hoursMin: 0, hoursLabel: "", daysWorked: 0, lateMin: 0, absences: 0, lateDays: 0, justified: 0, expectedMin: 0, overtimeMin: 0, overtimeLabel: "" });
   totals.hoursLabel = formatHM(totals.hoursMin);
+  totals.overtimeLabel = formatHM(totals.overtimeMin);
   return { rows, totals };
 }
 

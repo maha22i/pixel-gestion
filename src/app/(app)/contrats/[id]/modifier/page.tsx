@@ -5,7 +5,7 @@ import { requirePerm } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { PageHeader } from "@/components/ui";
 import { Flash } from "@/components/Flash";
-import { toDoc } from "@/lib/contractData";
+import { asSections, toDoc } from "@/lib/contractData";
 import { collectMissing } from "@/lib/contractModel";
 import { ContractEditor } from "../../ContractEditor";
 import { editorContext, stateFromRow } from "../../loadEditor";
@@ -23,9 +23,9 @@ export default async function EditContractPage({ params, searchParams }: { param
   const open = c.status === "brouillon" || c.status === "envoye";
   return (
     <>
-      <PageHeader title={`Modifier ${c.number}`} subtitle={c.templateName ?? ""} back={{ href: `/contrats/${id}`, label: "Contrat" }}
+      <PageHeader title={`Modifier ${c.number}`} subtitle={c.templateName || undefined} back={{ href: `/contrats/${id}`, label: c.number ?? "Contrat" }}
         actions={open && c.clientId ? (
-          <form action={refreshClient.bind(null, id)}><button className="btn-ghost">Mettre à jour depuis la fiche client</button></form>
+          <form action={refreshClient.bind(null, id)}><button className="btn-ghost" title="Recopie dans le contrat les coordonnées actuelles de la fiche client">Reprendre la fiche client</button></form>
         ) : undefined}
       />
       <Flash message={searchParams.ok === "client" ? "Informations reprises de la fiche client." : ""} clear={["ok"]} />
@@ -38,8 +38,10 @@ export default async function EditContractPage({ params, searchParams }: { param
         quotes={ctx.quotes}
         catalog={ctx.catalog}
         clauses={ctx.clauses.map((cl) => ({ key: cl.key, kind: cl.kind, title: cl.title, blocks: (Array.isArray(cl.blocks) ? cl.blocks : []) as Block[] }))}
+        templates={ctx.templates.map((t) => ({ id: t.id, name: t.name, sections: asSections(t.sections) }))}
         missing={missing}
         contractId={id}
+        cancelHref={`/contrats/${id}`}
       />
     </>
   );
