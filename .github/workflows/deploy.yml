@@ -1,0 +1,61 @@
+# Déploie la branche main sur le VPS à chaque push.
+# Secrets du dépôt (Settings → Secrets and variables → Actions) :
+#   VPS_HOST      IP ou nom du serveur
+#   VPS_USER      utilisateur SSH
+#   VPS_SSH_KEY   clé privée autorisée sur ce serveur
+#   VPS_APP_DIR   dossier de la prod, là où se trouvent docker-compose.yml et .env
+#   VPS_PORT      facultatif, 22 si absent
+#
+# Le VPS doit déjà être un clone du dépôt, avec la clé
+# ~/.ssh/pixel_gestion_deploy autorisée en Deploy key (lecture seule).
+
+name: Déploiement production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Déployer sur le VPS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Charger la clé SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          test -n "$VPS_SSH_KEY" || { echo "Secret VPS_SSH_KEY manquant."; exit 1; }
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" | sed 's/\r$//' > ~/.ssh/vps_key
+          chmod 600 ~/.ssh/vps_key
+
+      - name: Enregistrer l'empreinte du VPS
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+        run: |
+          test -n "$VPS_HOST" || { echo "Secret VPS_HOST manquant."; exit 1; }
+          port="${VPS_PORT:-22}"
+          ssh-keyscan -p "$port" -H "$VPS_HOST" >> ~/.ssh/known_hosts
+
+      - name: Mettre à jour la production
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
+        run: |
+          test -n "$VPS_USER" || { echo "Secret VPS_USER manquant."; exit 1; }
+          test -n "$VPS_APP_DIR" || { echo "Secret VPS_APP_DIR manquant."; exit 1; }
+          port="${VPS_PORT:-22}"
+          remote_dir=$(printf '%q' "$VPS_APP_DIR")
+          ssh -i ~/.ssh/vps_key -p "$port" \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            "$VPS_USER@$VPS_HOST" \
+            "cd $remote_dir && export GIT_SSH_COMMAND='ssh -i ~/.ssh/pixel_gestion_deploy -o IdentitiesOnly=yes' && git fetch origin main && git checkout -f -B main origin/main && sh scripts/deploy.sh"
