@@ -3,11 +3,10 @@
 #   VPS_HOST      IP ou nom du serveur
 #   VPS_USER      utilisateur SSH
 #   VPS_SSH_KEY   clé privée autorisée sur ce serveur
-#   VPS_APP_DIR   dossier de la prod, là où se trouvent docker-compose.yml et .env
 #   VPS_PORT      facultatif, 22 si absent
 #
-# Le VPS doit déjà être un clone du dépôt, avec la clé
-# ~/.ssh/pixel_gestion_deploy autorisée en Deploy key (lecture seule).
+# Le dossier de prod est /opt/pixel-finance. Le dépôt est public,
+# le VPS le récupère en HTTPS, sans clé GitHub.
 
 name: Déploiement production
 
@@ -48,14 +47,11 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_PORT: ${{ secrets.VPS_PORT }}
-          VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
         run: |
           test -n "$VPS_USER" || { echo "Secret VPS_USER manquant."; exit 1; }
-          test -n "$VPS_APP_DIR" || { echo "Secret VPS_APP_DIR manquant."; exit 1; }
           port="${VPS_PORT:-22}"
-          remote_dir=$(printf '%q' "$VPS_APP_DIR")
           ssh -i ~/.ssh/vps_key -p "$port" \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             "$VPS_USER@$VPS_HOST" \
-            "cd $remote_dir && export GIT_SSH_COMMAND='ssh -i ~/.ssh/pixel_gestion_deploy -o IdentitiesOnly=yes' && git fetch origin main && git checkout -f -B main origin/main && sh scripts/deploy.sh"
+            "cd /opt/pixel-finance && git fetch origin main && git checkout -f -B main origin/main && sh scripts/deploy.sh"

@@ -46,25 +46,18 @@ Un push sur `main` lance `.github/workflows/deploy.yml` : le workflow se connect
 
 La branche de travail ne part pas en prod. Il faut la fusionner dans `main`.
 
-Secrets à créer dans GitHub (Settings → Secrets and variables → Actions) : `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` (clé privée acceptée par le VPS), `VPS_APP_DIR` (dossier de la prod). `VPS_PORT` est facultatif.
+Secrets à créer dans GitHub (Settings → Secrets and variables → Actions) : `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` (clé privée acceptée par le VPS). `VPS_PORT` est facultatif. Le dossier de prod est fixé à `/opt/pixel-finance`.
 
-Une seule fois, dans le dossier déjà en prod (ne pas le renommer, le nom fixe les volumes Docker) :
-
-```bash
-cp .env /root/pixel.env.bak
-ssh-keygen -t ed25519 -f ~/.ssh/pixel_gestion_deploy -N ""
-cat ~/.ssh/pixel_gestion_deploy.pub
-```
-
-Ajoute cette clé publique dans GitHub → Settings du dépôt → Deploy keys, en lecture seule. Puis :
+Une seule fois, dans ce dossier (ne pas le renommer, le nom fixe les volumes Docker) :
 
 ```bash
-export GIT_SSH_COMMAND='ssh -i ~/.ssh/pixel_gestion_deploy -o IdentitiesOnly=yes'
+cp -a .env /root/pixel-finance.env.bak
 git init
-git remote add origin git@github.com:maha22i/pixel-gestion.git
-git fetch origin
+git config --global --add safe.directory /opt/pixel-finance
+git remote add origin https://github.com/maha22i/pixel-gestion.git
+git fetch origin main
 git checkout -f -B main origin/main
-cp /root/pixel.env.bak .env
+test -f .env || cp /root/pixel-finance.env.bak .env
 sh scripts/deploy.sh
 ```
 
