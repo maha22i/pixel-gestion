@@ -16,10 +16,12 @@ export default async function TemplateEditPage({ params }: { params: { id: strin
   const base = emptyState(ctx.settings);
   let initial = { ...base, templateName: "Nouveau modèle" };
   let id: number | null = null;
+  let description = "";
   if (!creating) {
     const [t] = await db.select().from(schema.contractTemplates).where(eq(schema.contractTemplates.id, Number(params.id)));
     if (!t) notFound();
     id = t.id;
+    description = t.description ?? "";
     initial = {
       ...base,
       templateName: t.name,
@@ -36,7 +38,7 @@ export default async function TemplateEditPage({ params }: { params: { id: strin
   }
   return (
     <>
-      <PageHeader title={creating ? "Nouveau modèle" : initial.templateName} back={{ href: "/contrats/modeles", label: "Modèles" }} />
+      <PageHeader title={creating ? "Nouveau modèle" : initial.templateName} subtitle="Un modèle fixe l’intitulé, les prestations, la durée par défaut et les articles proposés à la création d’un contrat." back={{ href: "/contrats/modeles", label: "Modèles" }} />
       <ContractEditor
         asTemplate
         action={saveTemplate.bind(null, id)}
@@ -47,6 +49,8 @@ export default async function TemplateEditPage({ params }: { params: { id: strin
         catalog={ctx.catalog}
         clauses={ctx.clauses.map((cl) => ({ key: cl.key, kind: cl.kind, title: cl.title, blocks: (Array.isArray(cl.blocks) ? cl.blocks : []) as Block[] }))}
         missing={[]}
+        templateMeta={{ name: initial.templateName, description }}
+        cancelHref="/contrats/modeles"
       />
     </>
   );

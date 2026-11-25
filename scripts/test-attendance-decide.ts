@@ -138,4 +138,37 @@ assert.equal(daysOfMonth("2026-10").length, 31);
 assert.ok(month.totals.absences >= 1);
 assert.equal(month.rows.filter((row) => row.status === "repos").length > 0, true);
 
+// Heures prévues et heures sup
+assert.equal(worked.expectedMin, 540);
+assert.equal(worked.overtimeMin, 0);
+const longDay = buildDayRow({
+  day: "2026-10-28",
+  today: "2026-10-30",
+  schedule,
+  punches: [
+    { kind: "arrivee", at: "2026-10-28T05:00:00.000Z", channel: "bureau", status: "valide" },
+    { kind: "depart", at: "2026-10-28T16:00:00.000Z", channel: "bureau", status: "valide" },
+  ],
+});
+assert.equal(longDay.hoursMin, 660);
+assert.equal(longDay.overtimeMin, 120);
+const restDay = buildDayRow({
+  day: "2026-10-30",
+  today: "2026-10-31",
+  schedule,
+  punches: [
+    { kind: "arrivee", at: "2026-10-30T06:00:00.000Z", channel: "bureau", status: "valide" },
+    { kind: "depart", at: "2026-10-30T09:00:00.000Z", channel: "bureau", status: "valide" },
+  ],
+});
+assert.equal(restDay.expectedMin, 0);
+assert.equal(restDay.overtimeMin, 180);
+const openDay = buildDayRow({
+  day: "2026-10-30",
+  today: "2026-10-30",
+  schedule,
+  punches: [{ kind: "arrivee", at: "2026-10-30T05:00:00.000Z", channel: "bureau", status: "valide" }],
+});
+assert.equal(openDay.overtimeMin, 0);
+
 console.log("Décision et paie : tous les cas passent.");

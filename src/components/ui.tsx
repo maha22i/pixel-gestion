@@ -88,13 +88,70 @@ export function Field({ label, children, className = "" }: { label: string; chil
   );
 }
 
-export function Stat({ label, value, hint, tone = "navy" }: { label: string; value: React.ReactNode; hint?: React.ReactNode; tone?: "navy" | "gold" | "red" | "green" }) {
-  const toneCls = { navy: "text-navy", gold: "text-amber-700", red: "text-red-700", green: "text-emerald-700" }[tone];
+const STAT_TONE = {
+  navy: { text: "text-navy", chip: "bg-navy-50 text-navy-700" },
+  gold: { text: "text-amber-700", chip: "bg-gold-100 text-amber-800" },
+  red: { text: "text-red-700", chip: "bg-red-50 text-red-700" },
+  green: { text: "text-emerald-700", chip: "bg-emerald-50 text-emerald-700" },
+  blue: { text: "text-sky-800", chip: "bg-sky-50 text-sky-700" },
+} as const;
+
+/** Indicateur chiffré. `icon` facultatif (icône lucide déjà rendue, ex. <Wallet size={18} />). */
+export function Stat({
+  label, value, hint, tone = "navy", icon, className = "",
+}: {
+  label: string; value: React.ReactNode; hint?: React.ReactNode; tone?: keyof typeof STAT_TONE; icon?: React.ReactNode; className?: string;
+}) {
+  const t = STAT_TONE[tone];
   return (
-    <div className="card card-pad">
-      <p className="h-section">{label}</p>
-      <p className={`mt-2 break-words text-[1.35rem] font-bold leading-none tabular-nums sm:text-[1.7rem] xl:text-[30px] ${toneCls}`}>{value}</p>
+    <div className={`card card-pad h-full ${className}`}>
+      <div className="flex items-start justify-between gap-3">
+        <p className="h-section">{label}</p>
+        {icon && <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${t.chip}`}>{icon}</span>}
+      </div>
+      <p className={`mt-2 break-words text-[1.35rem] font-bold leading-none tabular-nums sm:text-[1.6rem] xl:text-[28px] ${t.text}`}>{value}</p>
       {hint && <p className="mt-2 text-sm text-navy-600/75">{hint}</p>}
+    </div>
+  );
+}
+
+/** Carte avec un en-tête (titre + action à droite) et un contenu. `flush` retire le padding du contenu (tableaux, listes). */
+export function SectionCard({
+  title, action, children, flush = false, className = "", id,
+}: {
+  title: React.ReactNode; action?: React.ReactNode; children: React.ReactNode; flush?: boolean; className?: string; id?: string;
+}) {
+  return (
+    <section id={id} className={`card min-w-0 ${className}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2 px-5 pb-3 pt-5 sm:px-6">
+        <h2 className="h-section">{title}</h2>
+        {action && <div className="flex flex-wrap items-center gap-2 text-sm">{action}</div>}
+      </div>
+      <div className={flush ? "" : "px-5 pb-5 sm:px-6 sm:pb-6"}>{children}</div>
+    </section>
+  );
+}
+
+/** Pastille avec initiales, couleur de l'utilisateur. */
+export function Avatar({ name, color, size = 32 }: { name: string; color?: string | null; size?: number }) {
+  const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("");
+  return (
+    <span
+      aria-hidden
+      className="grid shrink-0 place-items-center rounded-full font-bold text-white ring-2 ring-white"
+      style={{ width: size, height: size, fontSize: Math.round(size * 0.38), background: color || "#2C3E50" }}
+    >
+      {initials}
+    </span>
+  );
+}
+
+/** Barre de progression simple (0–100). */
+export function Progress({ value, tone = "navy" }: { value: number; tone?: "navy" | "gold" | "green" | "red" }) {
+  const bar = { navy: "bg-navy", gold: "bg-gold", green: "bg-emerald-500", red: "bg-red-500" }[tone];
+  return (
+    <div className="h-2 overflow-hidden rounded-full bg-navy-50">
+      <div className={`h-full rounded-full ${bar}`} style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
     </div>
   );
 }

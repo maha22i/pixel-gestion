@@ -83,7 +83,7 @@ export async function punchesBetween(userId: number, start: string, end: string)
 }
 
 export async function activeUsers() {
-  return db.select({ id: schema.users.id, name: schema.users.name, jobTitle: schema.users.jobTitle, role: schema.users.role })
+  return db.select({ id: schema.users.id, name: schema.users.name, jobTitle: schema.users.jobTitle, role: schema.users.role, color: schema.users.color })
     .from(schema.users)
     .where(eq(schema.users.active, true))
     .orderBy(asc(schema.users.name));

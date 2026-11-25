@@ -36,6 +36,16 @@ export async function updateItem(id: number, fd: FormData) {
   redirect("/catalogue?ok=1");
 }
 
+/** Archive / réactive un élément depuis la liste, sans passer par la fiche. */
+export async function toggleItemActive(id: number, back: string) {
+  await requirePerm("catalogue", "write");
+  const [item] = await db.select({ active: schema.catalogItems.active }).from(schema.catalogItems).where(eq(schema.catalogItems.id, id));
+  if (item) await db.update(schema.catalogItems).set({ active: !item.active }).where(eq(schema.catalogItems.id, id));
+  revalidatePath("/catalogue");
+  const safe = back.startsWith("/catalogue") ? back : "/catalogue";
+  redirect(safe + (safe.includes("?") ? "&" : "?") + (item?.active ? "archive=1" : "ok=1"));
+}
+
 export async function deleteItem(id: number) {
   await requirePerm("catalogue", "write");
   // Les lignes de devis/factures gardent leur désignation et prix (catalog_item_id passe à NULL)

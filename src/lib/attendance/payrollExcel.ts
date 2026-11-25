@@ -1,6 +1,6 @@
 import "server-only";
 import ExcelJS from "exceljs";
-import { formatDjiboutiDate } from "./time";
+import { formatDjiboutiDate, formatHM } from "./time";
 import type { DayRow, MonthTotals } from "./payroll";
 
 const NAVY = "FF2C3E50";
@@ -18,6 +18,7 @@ export async function payrollXlsx(reports: PersonReport[], month: string) {
     { header: "Arrivée", key: "arrival", width: 12 },
     { header: "Départ", key: "departure", width: 16 },
     { header: "Heures", key: "hours", width: 12 },
+    { header: "Heures sup", key: "overtime", width: 12 },
     { header: "Retard (min)", key: "late", width: 14 },
     { header: "Statut", key: "status", width: 16 },
     { header: "Détail", key: "detail", width: 42 },
@@ -31,6 +32,7 @@ export async function payrollXlsx(reports: PersonReport[], month: string) {
         arrival: row.arrival,
         departure: row.departure,
         hours: row.hoursLabel,
+        overtime: row.overtimeMin ? formatHM(row.overtimeMin) : "",
         late: row.lateMin,
         status: row.statusLabel,
         detail: row.detail,
@@ -42,9 +44,10 @@ export async function payrollXlsx(reports: PersonReport[], month: string) {
       arrival: "",
       departure: `${report.totals.daysWorked} j. travaillés`,
       hours: report.totals.hoursLabel,
+      overtime: report.totals.overtimeLabel,
       late: report.totals.lateMin,
       status: `${report.totals.absences} absence(s)`,
-      detail: "Heures, jours travaillés, minutes de retard, absences non justifiées",
+      detail: "Heures, heures sup, jours travaillés, minutes de retard, absences non justifiées",
     });
     total.font = { bold: true, color: { argb: NAVY } };
     total.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFEF6E7" } };

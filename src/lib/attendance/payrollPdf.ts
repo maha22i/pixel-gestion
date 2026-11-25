@@ -46,6 +46,7 @@ export async function payrollPdf(input: { name: string; jobTitle?: string | null
   doc.font("B").fontSize(11).fillColor(NAVY);
   doc.text(`Heures : ${formatHM(input.totals.hoursMin)}`, 36, y);
   doc.text(`Jours travaillés : ${input.totals.daysWorked}`, 200, y);
+  doc.text(`Heures sup : ${formatHM(input.totals.overtimeMin)}`, 380, y);
   y += 16;
   doc.text(`Retard : ${input.totals.lateMin} min`, 36, y);
   doc.text(`Absences non justifiées : ${input.totals.absences}`, 200, y);
