@@ -40,10 +40,28 @@ puis `certbot --nginx -d gestion.pixel-nomade.com`.
 
 > Pour un test rapide en `http://IP:3000` sans HTTPS, mettez `COOKIE_SECURE=false` (sinon le navigateur refuse le cookie de session) et retirez `127.0.0.1:` du port dans `docker-compose.yml`.
 
-### Mise à jour
+### Mise à jour automatique
+
+Un push sur `main` lance `.github/workflows/deploy.yml` : le workflow se connecte au VPS, aligne le dossier sur `main`, puis exécute `scripts/deploy.sh` (`docker compose up -d --build`). Les migrations partent au démarrage du conteneur. Le fichier `.env` et les volumes (base, pièces jointes) restent sur le serveur.
+
+La branche de travail ne part pas en prod. Il faut la fusionner dans `main`.
+
+Secrets à créer dans GitHub (Settings → Secrets and variables → Actions) : `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` (clé privée acceptée par le VPS). `VPS_PORT` est facultatif. Le dossier de prod est fixé à `/opt/pixel-finance`.
+
+Une seule fois, dans ce dossier (ne pas le renommer, le nom fixe les volumes Docker) :
+
 ```bash
-docker compose up -d --build   # les migrations s'appliquent automatiquement
+cp -a .env /root/pixel-finance.env.bak
+git init
+git config --global --add safe.directory /opt/pixel-finance
+git remote add origin https://github.com/maha22i/pixel-gestion.git
+git fetch origin main
+git checkout -f -B main origin/main
+test -f .env || cp /root/pixel-finance.env.bak .env
+sh scripts/deploy.sh
 ```
+
+Relance manuelle : `sh scripts/deploy.sh` depuis ce dossier, ou l'onglet Actions → Déploiement production → Run workflow.
 
 ### Sauvegarde de la base
 ```bash
