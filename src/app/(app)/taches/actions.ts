@@ -1,7 +1,7 @@
 "use server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requirePerm, requireUser } from "@/lib/auth";
 import { addDays, today } from "@/lib/format";
@@ -39,6 +39,7 @@ export async function createTask(fd: FormData) {
     clientId,
     typeId: Number(fd.get("typeId")) || null,
     startDate: String(fd.get("startDate") ?? "") || null,
+    startTime: /^\d{2}:\d{2}$/.test(String(fd.get("startTime") ?? "")) ? String(fd.get("startTime")) : null,
     dueDate: String(fd.get("dueDate") ?? "") || null,
     dueTime: String(fd.get("dueTime") ?? "") || null,
     priority: String(fd.get("priority") ?? "normale"),
@@ -49,7 +50,8 @@ export async function createTask(fd: FormData) {
     createdBy: user.id,
   }).returning();
   await setAssignees(t.id, assigneeIds);
-  const checks = String(fd.get("checklist") ?? "").split("\n").map((s) => s.trim()).filter(Boolean);
+  const fromWizard = fd.getAll("check_label").map((v) => String(v).trim()).filter(Boolean);
+  const checks = fromWizard.length ? fromWizard : String(fd.get("checklist") ?? "").split("\n").map((s) => s.trim()).filter(Boolean);
   if (checks.length) {
     await db.insert(schema.taskChecklistItems).values(checks.map((label, i) => ({ taskId: t.id, label, position: i })));
   }
@@ -90,18 +92,34 @@ export async function updateTask(id: number, fd: FormData) {
   const write = canEditTask(user);
   if (!write) redirect("/acces-refuse");
   const title = String(fd.get("title") ?? "").trim() || task.title;
+  const projectId = Number(fd.get("projectId")) || null;
+  // Le client découle du projet : plus besoin de le choisir séparément.
+  let clientId: number | null = projectId ? null : task.clientId;
+  if (projectId) {
+    const [p] = await db.select({ clientId: schema.projects.clientId }).from(schema.projects).where(eq(schema.projects.id, projectId));
+    clientId = p?.clientId ?? null;
+  }
+  const hm = (k: string) => { const v = String(fd.get(k) ?? ""); return /^\d{2}:\d{2}$/.test(v) ? v : null; };
+  const startDate = String(fd.get("startDate") ?? "") || null;
+  const dueDate = String(fd.get("dueDate") ?? "") || null;
+  const startTime = hm("startTime");
+  const dueTime = hm("dueTime");
+  const back = String(fd.get("back") ?? "") || `/taches/${id}`;
+  const sep = back.includes("?") ? "&" : "?";
+  if (startDate && dueDate && dueDate < startDate) redirect(`${back}${sep}e=dates`);
+  if (startDate && dueDate && startDate === dueDate && startTime && dueTime && dueTime <= startTime) redirect(`${back}${sep}e=heures`);
   const patch = {
     title,
     description: String(fd.get("description") ?? "") || null,
-    projectId: Number(fd.get("projectId")) || null,
-    clientId: Number(fd.get("clientId")) || null,
+    projectId,
+    clientId,
     typeId: Number(fd.get("typeId")) || null,
-    startDate: String(fd.get("startDate") ?? "") || null,
-    dueDate: String(fd.get("dueDate") ?? "") || null,
-    dueTime: String(fd.get("dueTime") ?? "") || null,
+    startDate,
+    startTime,
+    dueDate,
+    dueTime,
     priority: String(fd.get("priority") ?? task.priority),
     externalUrl: String(fd.get("externalUrl") ?? "") || null,
-    skipReview: write ? fd.get("skipReview") === "on" : task.skipReview,
   };
   await db.update(schema.tasks).set(patch).where(eq(schema.tasks.id, id));
   if (write) {
@@ -112,9 +130,32 @@ export async function updateTask(id: number, fd: FormData) {
       await notify(next, "assign", `${user.name} a mis à jour l'assignation de « ${title} »`, id, user.id);
     }
   }
+  if (fd.has("checks_sent")) await syncChecklist(id, user.id, fd);
   await logTask(id, user.id, "modification", "Fiche mise à jour");
   revalidatePath("/taches");
-  redirect(String(fd.get("back") ?? "") || `/taches/${id}`);
+  redirect(`${back}${sep}ok=modifiee`);
+}
+
+/** Applique la liste de sous-tâches envoyée par l'assistant : ajouts, renommages, suppressions et ordre. */
+async function syncChecklist(taskId: number, actorId: number, fd: FormData) {
+  const ids = fd.getAll("check_id").map((v) => Number(v) || 0);
+  const labels = fd.getAll("check_label").map((v) => String(v).trim());
+  const existing = await db.select().from(schema.taskChecklistItems).where(eq(schema.taskChecklistItems.taskId, taskId));
+  const kept = new Set(ids.filter((i) => i > 0));
+  const removed = existing.filter((c) => !kept.has(c.id));
+  if (removed.length) await db.delete(schema.taskChecklistItems).where(inArray(schema.taskChecklistItems.id, removed.map((c) => c.id)));
+  let added = 0;
+  for (let i = 0; i < labels.length; i++) {
+    if (!labels[i]) continue;
+    const cur = existing.find((c) => c.id === ids[i]);
+    if (cur) {
+      if (cur.label !== labels[i] || cur.position !== i) await db.update(schema.taskChecklistItems).set({ label: labels[i], position: i }).where(eq(schema.taskChecklistItems.id, cur.id));
+    } else {
+      await db.insert(schema.taskChecklistItems).values({ taskId, label: labels[i], position: i });
+      added++;
+    }
+  }
+  if (added || removed.length) await logTask(taskId, actorId, "checklist", `${added} ajoutée(s), ${removed.length} retirée(s)`);
 }
 
 export async function setStatus(id: number, fd: FormData) {
@@ -205,7 +246,7 @@ export async function addCheck(taskId: number, fd: FormData) {
   const { user } = await guard(taskId);
   const label = String(fd.get("label") ?? "").trim();
   if (label) {
-    await db.insert(schema.taskChecklistItems).values({ taskId, label });
+    await db.insert(schema.taskChecklistItems).values({ taskId, label, position: sql`(SELECT COALESCE(MAX(position), -1) + 1 FROM task_checklist_items WHERE task_id = ${taskId})` });
     await logTask(taskId, user.id, "checklist", "Ajout : " + label);
   }
   redirect(String(fd.get("back") ?? "") || `/taches/${taskId}`);
@@ -375,17 +416,27 @@ export async function saveCategory(fd: FormData) {
   await requireUser();
   const { requireAdmin } = await import("@/lib/auth");
   await requireAdmin();
-  const name = String(fd.get("name") ?? "").trim();
-  if (name) await db.insert(schema.projectCategories).values({ name });
-  redirect("/parametres");
+  const name = String(fd.get("name") ?? "").replace(/\s+/g, " ").trim();
+  if (!name) redirect("/parametres?s=listes&ajout=categorie&e=vide");
+  const [dup] = await db.select({ id: schema.projectCategories.id }).from(schema.projectCategories)
+    .where(sql`lower(${schema.projectCategories.name}) = lower(${name})`);
+  if (dup) redirect(`/parametres?s=listes&ajout=categorie&e=doublon&nom=${encodeURIComponent(name)}`);
+  await db.insert(schema.projectCategories).values({ name, position: sql`(SELECT COALESCE(MAX(position), 0) + 1 FROM project_categories)` });
+  revalidatePath("/parametres");
+  redirect("/parametres?s=listes&ok=1");
 }
 
 export async function saveTaskType(fd: FormData) {
   const { requireAdmin } = await import("@/lib/auth");
   await requireAdmin();
-  const name = String(fd.get("name") ?? "").trim();
-  if (name) await db.insert(schema.taskTypes).values({ name });
-  redirect("/parametres");
+  const name = String(fd.get("name") ?? "").replace(/\s+/g, " ").trim();
+  if (!name) redirect("/parametres?s=listes&ajout=type&e=vide");
+  const [dup] = await db.select({ id: schema.taskTypes.id }).from(schema.taskTypes)
+    .where(sql`lower(${schema.taskTypes.name}) = lower(${name})`);
+  if (dup) redirect(`/parametres?s=listes&ajout=type&e=doublon&nom=${encodeURIComponent(name)}`);
+  await db.insert(schema.taskTypes).values({ name, position: sql`(SELECT COALESCE(MAX(position), 0) + 1 FROM task_types)` });
+  revalidatePath("/parametres");
+  redirect("/parametres?s=listes&ok=1");
 }
 
 void inArray;

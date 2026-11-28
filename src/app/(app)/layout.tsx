@@ -1,5 +1,6 @@
 import { requireUser, can } from "@/lib/auth";
 import { roleLabel } from "@/lib/modules";
+import { getSettings } from "@/lib/settings";
 import { Sidebar } from "@/components/Sidebar";
 import { TopBar } from "@/components/TopBar";
 import { Bell } from "@/components/Bell";
@@ -19,6 +20,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { group: "activite" as const, href: "/taches", label: "Tâches", icon: "taches" as const, m: "taches" as const },
     { group: "pilotage" as const, href: "/planning", label: "Planning", icon: "planning" as const, m: "planning" as const },
     { group: "pilotage" as const, href: "/suivi", label: "Suivi de l'équipe", icon: "suivi" as const, m: "suivi_equipe" as const },
+    { group: "pilotage" as const, href: "/schema", label: "Schéma des projets", icon: "schema" as const, m: "suivi_equipe" as const },
     { group: "pilotage" as const, href: "/presences", label: "Présences", icon: "presences" as const, m: "presences" as const, write: true },
     { group: "activite" as const, href: "/materiel", label: "Matériel", icon: "materiel" as const, m: "materiel" as const },
     { group: "activite" as const, href: "/verification", label: "Vérification", icon: "verification" as const, m: "materiel" as const },
@@ -29,12 +31,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { group: "finance" as const, href: "/paiements", label: "Paiements", icon: "paiements" as const, m: "paiements" as const },
     { group: "finance" as const, href: "/depenses", label: "Dépenses", icon: "depenses" as const, m: "depenses" as const },
   ];
-  const items = all.filter((i) => can(user, i.m) && (!i.write || can(user, i.m, "write"))).map(({ group, href, label, icon }) => ({ group, href, label, icon }));
+  const items: Parameters<typeof Sidebar>[0]["items"] = all.filter((i) => can(user, i.m) && (!i.write || can(user, i.m, "write"))).map(({ group, href, label, icon }) => ({ group, href, label, icon }));
+  // Aicha, l'assistante IA : en tête de « Mon espace » une fois activée.
+  if (user.role === "admin" || ((await getSettings()).aiEnabled && can(user, "aicha"))) items.unshift({ group: "moi" as const, href: "/aicha", label: "Aicha (IA)", icon: "aicha" as const });
+  // Ressources humaines : chacun gère ses congés ; admins et managers valident.
+  items.splice(items.filter((i) => i.group === "moi").length, 0, { group: "moi" as const, href: "/mes-conges", label: "Mes congés", icon: "conges" as const });
+  if (user.role === "admin" || can(user, "rh")) {
+    const at = items.findIndex((i) => i.href === "/presences");
+    items.splice(at >= 0 ? at + 1 : items.length, 0, { group: "pilotage" as const, href: "/rh", label: "Ressources humaines", icon: "rh" as const });
+  }
   const adminItems =
     user.role === "admin"
       ? [
-          { href: "/utilisateurs", label: "Utilisateurs & droits", icon: "users" as const },
-          { href: "/parametres", label: "Paramètres", icon: "settings" as const },
+          { group: "admin" as const, href: "/utilisateurs", label: "Utilisateurs & droits", icon: "users" as const },
+          { group: "admin" as const, href: "/parametres", label: "Paramètres", icon: "settings" as const },
         ]
       : [];
   return (

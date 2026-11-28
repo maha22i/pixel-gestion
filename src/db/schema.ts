@@ -25,6 +25,13 @@ export const permissions = pgTable("permissions", {
   level: text("level").notNull().default("none"), // none | own | read | write
 }, (t) => ({ pk: primaryKey({ columns: [t.userId, t.module] }) }));
 
+/** Droits par défaut de chaque rôle ; les lignes de `permissions` d'un utilisateur les remplacent. */
+export const rolePermissions = pgTable("role_permissions", {
+  role: text("role").notNull(),
+  module: text("module").notNull(),
+  level: text("level").notNull().default("none"),
+}, (t) => ({ pk: primaryKey({ columns: [t.role, t.module] }) }));
+
 // ─── Paramètres société (une seule ligne, id = 1) ─────────────────────────
 export const settings = pgTable("settings", {
   id: integer("id").primaryKey().default(1),
@@ -50,6 +57,10 @@ export const settings = pgTable("settings", {
   smtpFrom: text("smtp_from").notNull().default(""),
   smtpSecure: boolean("smtp_secure").notNull().default(false),
   appUrl: text("app_url").notNull().default(""),
+  /** Clé OpenAI chiffrée (jamais renvoyée au navigateur). */
+  aiApiKey: text("ai_api_key").notNull().default(""),
+  aiModel: text("ai_model").notNull().default("gpt-4.1-mini"),
+  aiEnabled: boolean("ai_enabled").notNull().default(false),
 });
 
 export const counters = pgTable("counters", {
@@ -335,7 +346,10 @@ export const tasks = pgTable("tasks", {
   clientId: integer("client_id").references(() => clients.id, { onDelete: "set null" }),
   typeId: integer("type_id").references(() => taskTypes.id, { onDelete: "set null" }),
   startDate: date("start_date"),
+  /** Heure de début (format HH:MM). */
+  startTime: text("start_time"),
   dueDate: date("due_date"),
+  /** Heure de fin (format HH:MM). */
   dueTime: text("due_time"),
   priority: text("priority").notNull().default("normale"),
   status: text("status").notNull().default("a_faire"),
@@ -345,6 +359,10 @@ export const tasks = pgTable("tasks", {
   skipReview: boolean("skip_review").notNull().default(false),
   seriesId: integer("series_id").references(() => taskSeries.id, { onDelete: "set null" }),
   seriesDate: date("series_date"),
+  /** Tâche générée par une production récurrente : ligne, mois (AAAA-MM) et numéro du livrable dans le mois. */
+  planItemId: integer("plan_item_id"),
+  planPeriod: text("plan_period"),
+  planSeq: integer("plan_seq"),
   createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
@@ -694,3 +712,94 @@ export const attendanceAbsences = pgTable("attendance_absences", {
   createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({ userIdx: index("attendance_absences_user_idx").on(t.userId) }));
+
+// ─── Ressources humaines ─────────────────────────────────────────────────
+export const leaveRequests = pgTable("leave_requests", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(), // conge | maladie | familial | sans_solde | autre
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
+  /** Jours ouvrés demandés (selon l'horaire, fériés exclus). */
+  days: integer("days").notNull().default(0),
+  reason: text("reason").notNull().default(""),
+  status: text("status").notNull().default("en_attente"), // en_attente | approuve | refuse | annule
+  docFilename: text("doc_filename"),
+  docStored: text("doc_stored"),
+  docMime: text("doc_mime"),
+  docSize: integer("doc_size"),
+  decidedBy: integer("decided_by").references(() => users.id, { onDelete: "set null" }),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  decisionNote: text("decision_note"),
+  absenceId: integer("absence_id").references(() => attendanceAbsences.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  userIdx: index("leave_requests_user_idx").on(t.userId),
+  statusIdx: index("leave_requests_status_idx").on(t.status),
+}));
+
+export const employmentContracts = pgTable("employment_contracts", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  contractType: text("contract_type").notNull().default("cdi"), // cdi | cdd | stage | prestataire
+  jobTitle: text("job_title").notNull().default(""),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date"),
+  /** Salaire mensuel brut en FDJ. */
+  monthlySalary: integer("monthly_salary").notNull().default(0),
+  weeklyHours: integer("weekly_hours").notNull().default(40),
+  leaveDaysPerYear: integer("leave_days_per_year").notNull().default(30),
+  notes: text("notes"),
+  docFilename: text("doc_filename"),
+  docStored: text("doc_stored"),
+  docMime: text("doc_mime"),
+  docSize: integer("doc_size"),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ userIdx: index("employment_contracts_user_idx").on(t.userId) }));
+
+// ─── Productions récurrentes (ex. 4 vidéos + 1 affiche par mois pour un client) ─────
+export const productionPlans = pgTable("production_plans", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  startMonth: text("start_month").notNull(), // AAAA-MM
+  endMonth: text("end_month"),
+  active: boolean("active").notNull().default(true),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const productionPlanItems = pgTable("production_plan_items", {
+  id: serial("id").primaryKey(),
+  planId: integer("plan_id").notNull().references(() => productionPlans.id, { onDelete: "cascade" }),
+  label: text("label").notNull(),
+  perMonth: integer("per_month").notNull().default(1),
+  /** Jours de la semaine autorisés, 0 = dimanche … 6 = samedi (« 2,4 »). */
+  weekdays: text("weekdays").notNull().default(""),
+  startTime: text("start_time"),
+  endTime: text("end_time"),
+  typeId: integer("type_id").references(() => taskTypes.id, { onDelete: "set null" }),
+  /** Personnes assignées à chaque livrable (« 3,5 »). */
+  assigneeIds: text("assignee_ids").notNull().default(""),
+  position: integer("position").notNull().default(0),
+}, (t) => ({ planIdx: index("production_plan_items_plan_idx").on(t.planId) }));
+
+// ─── Aicha : assistante IA ───────────────────────────────────────────────
+export const aiConversations = pgTable("ai_conversations", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  title: text("title").notNull().default("Nouvelle conversation"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ userIdx: index("ai_conversations_user_idx").on(t.userId, t.updatedAt) }));
+
+export const aiMessages = pgTable("ai_messages", {
+  id: serial("id").primaryKey(),
+  conversationId: integer("conversation_id").notNull().references(() => aiConversations.id, { onDelete: "cascade" }),
+  role: text("role").notNull(), // user | assistant | tool
+  content: text("content").notNull().default(""),
+  toolCalls: jsonb("tool_calls"),
+  toolCallId: text("tool_call_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({ convIdx: index("ai_messages_conversation_idx").on(t.conversationId, t.id) }));

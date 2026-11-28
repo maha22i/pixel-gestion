@@ -6,3 +6,4 @@ node_modules
 public/uploads/
 data/task-files/
 data/finance-files/
+docker-compose.override.yml

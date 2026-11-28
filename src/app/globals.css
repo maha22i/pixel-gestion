@@ -12,11 +12,7 @@ html { font-size: 16px; }
 body {
   @apply min-h-screen text-navy-900 antialiased;
   font-feature-settings: "tnum";
-  background-color: #f5f7fb;
-  background-image:
-    radial-gradient(circle at 5% 5%, rgba(245, 166, 35, 0.1), transparent 26%),
-    radial-gradient(circle at 98% 16%, rgba(44, 62, 80, 0.1), transparent 30%),
-    linear-gradient(180deg, #f8fafd 0%, #f2f5fa 48%, #edf1f8 100%);
+  background-color: #f5f6f8;
 }
 
 @layer base {
@@ -27,40 +23,45 @@ body {
 }
 
 @layer components {
+  /* Cartes à plat : fond blanc + fine bordure, sans ombre. */
   .card {
-    @apply rounded-2xl border border-white/80 bg-white/90 backdrop-blur-xl ring-1 ring-navy-100/60 shadow-[0_18px_45px_-28px_rgba(24,34,44,0.45)];
+    @apply rounded-xl border border-navy-100 bg-white;
   }
   .card-pad { @apply p-5 sm:p-6; }
   .h-section { @apply text-[11px] font-bold uppercase tracking-[0.16em] text-navy-600/75; }
 
+  /* Boutons : couleurs unies, pas de dégradé, d'ombre ni de déplacement au survol. */
   .btn {
-    @apply inline-flex h-10 max-w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 text-[14px] font-bold tracking-[0.01em] transition-all duration-200
-      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/50 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent
+    @apply inline-flex h-10 max-w-full select-none items-center justify-center gap-2 whitespace-nowrap rounded-lg border px-4 text-[14px] font-semibold
+      transition-colors duration-150
+      focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-1
       disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-primary {
-    @apply btn border border-navy-700 bg-gradient-to-b from-navy-700 to-navy text-white shadow-[0_14px_28px_-20px_rgba(24,34,44,0.9)]
-      hover:-translate-y-0.5 hover:from-navy-800 hover:to-navy-700 active:translate-y-0;
+    @apply btn border-navy bg-navy text-white hover:border-navy-800 hover:bg-navy-800 active:bg-navy-900;
   }
+  /* Alias historique utilisé par les pages Matériel. */
+  .btn-navy { @apply btn-primary; }
   .btn-gold {
-    @apply btn border border-amber-500 bg-gradient-to-b from-gold to-amber-500 text-navy-900 shadow-[0_14px_26px_-18px_rgba(217,140,11,0.75)]
-      hover:-translate-y-0.5 hover:from-amber-400 hover:to-amber-500 hover:text-white active:translate-y-0;
+    @apply btn border-gold bg-gold text-navy-900 hover:border-gold-600 hover:bg-gold-600 active:bg-amber-700 active:text-white;
   }
   .btn-ghost {
-    @apply btn border border-navy-200 bg-gradient-to-b from-white to-navy-50/25 text-navy-700 shadow-[0_10px_24px_-20px_rgba(24,34,44,0.55)]
-      hover:-translate-y-0.5 hover:border-navy-200 hover:from-white hover:to-navy-50/40 hover:text-navy active:translate-y-0;
+    @apply btn border-navy-200 bg-white text-navy-800 hover:border-navy-200 hover:bg-navy-50 active:bg-navy-100;
   }
   .btn-danger {
-    @apply btn border border-red-200 bg-gradient-to-b from-red-50 to-red-100/70 text-red-700 shadow-[0_10px_22px_-20px_rgba(185,28,28,0.7)]
-      hover:-translate-y-0.5 hover:border-red-300 hover:from-red-100 hover:to-red-200/70 active:translate-y-0;
+    @apply btn border-red-200 bg-white text-red-700 hover:border-red-300 hover:bg-red-50 active:bg-red-100;
   }
-  .btn-sm { @apply h-8 rounded-lg px-3 text-[12px] font-bold tracking-[0.01em]; }
+  .btn-sm { @apply h-8 rounded-md px-3 text-[13px]; }
 
-  .label { @apply mb-1.5 block text-[13px] font-bold text-navy-700; }
+  .label { @apply mb-1.5 block text-[13px] font-semibold text-navy-700; }
   .input {
-    @apply h-10 w-full min-w-0 max-w-full rounded-xl border border-navy-200 bg-white px-3 text-[14px] text-navy-900 placeholder:text-navy-600/40
-      shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_8px_20px_-18px_rgba(24,34,44,0.45)] transition
-      focus:border-gold/80 focus:outline-none focus:ring-4 focus:ring-gold-100/80;
+    @apply h-10 w-full min-w-0 max-w-full rounded-lg border border-navy-200 bg-white px-3 text-[14px] text-navy-900 placeholder:text-navy-600/40
+      transition-colors hover:border-navy-600/40
+      focus:border-gold-600 focus:outline-none focus:ring-2 focus:ring-gold/25;
+  }
+  /* Bouton natif « Choisir un fichier » aligné sur les boutons secondaires. */
+  input[type="file"]::file-selector-button {
+    @apply mr-3 h-9 cursor-pointer rounded-md border border-navy-200 bg-white px-3 text-[13px] font-semibold text-navy-800 transition-colors hover:bg-navy-50;
   }
   textarea.input { @apply h-auto min-h-[72px] py-2; }
   select.input {
@@ -111,6 +112,10 @@ body {
 }
 
 .member-modal { animation: member-modal-in 160ms ease-out; }
+
+@keyframes modal-fade-in { from { opacity: 0; } to { opacity: 1; } }
+.modal-backdrop { animation: modal-fade-in 140ms ease-out; }
+@media (prefers-reduced-motion: reduce) { .member-modal, .modal-backdrop { animation: none; } }
 
 @keyframes login-rise {
   from { opacity: 0; transform: translateY(14px); }

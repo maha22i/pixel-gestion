@@ -80,7 +80,7 @@ export default async function CataloguePage({ searchParams }: { searchParams: SP
                 {[["", "Tous"], ["service", "Services"], ["produit", "Produits"]].map(([k, v]) => (
                   <label key={k} className="cursor-pointer">
                     <input type="radio" name="kind" value={k} defaultChecked={kind === k} className="peer sr-only" />
-                    <span className="block rounded-lg px-3 py-1.5 text-center text-[13px] font-bold text-navy-600/75 transition peer-checked:bg-white peer-checked:text-navy peer-checked:shadow-sm peer-focus-visible:ring-2 peer-focus-visible:ring-gold">{v}</span>
+                    <span className="block rounded-lg px-3 py-1.5 text-center text-[13px] font-bold text-navy-600/75 transition peer-checked:bg-white peer-checked:text-navy peer-checked:ring-1 peer-checked:ring-navy-100 peer-focus-visible:ring-2 peer-focus-visible:ring-gold">{v}</span>
                   </label>
                 ))}
               </fieldset>
@@ -145,9 +145,9 @@ function ItemCard({ item: i, write, back }: { item: Item; write: boolean; back: 
   const service = i.kind === "service";
   return (
     <li
-      className={`group relative flex flex-col rounded-2xl border p-4 transition sm:p-5 ${
+      className={`group relative flex flex-col rounded-xl border p-4 transition-colors sm:p-5 ${
         i.active
-          ? "border-white/80 bg-white/90 shadow-[0_18px_45px_-30px_rgba(24,34,44,0.45)] ring-1 ring-navy-100/60 hover:-translate-y-0.5 hover:ring-gold/60"
+          ? "border-navy-100 bg-white hover:border-gold/70"
           : "border-dashed border-navy-200 bg-navy-50/40"
       }`}
     >

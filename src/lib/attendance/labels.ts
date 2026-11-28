@@ -30,6 +30,8 @@ export const DAY_STATUS_LABEL: Record<string, string> = {
 export const ABSENCE_KIND: Record<string, string> = {
   conge: "Congé",
   maladie: "Maladie",
+  familial: "Événement familial",
+  sans_solde: "Congé sans solde",
   mission: "Mission",
   autre: "Autre",
 };

@@ -99,17 +99,17 @@ export async function deleteEquipmentFile(id: number) {
 export async function createCategory(fd: FormData) {
   await requirePerm("materiel", "write");
   const name = s(fd, "name");
-  if (!name) redirect("/materiel?err=nom");
+  if (!name) redirect("/materiel?gerer=categories&err=nom");
   const parentId = Number(s(fd, "parentId")) || null;
   if (parentId) {
     const [p] = await db.select().from(schema.equipmentCategories).where(eq(schema.equipmentCategories.id, parentId));
-    if (!p || p.parentId) redirect("/materiel?err=parent");
+    if (!p || p.parentId) redirect("/materiel?gerer=categories&err=parent");
   }
   const rows = await db.select().from(schema.equipmentCategories).where(parentId ? eq(schema.equipmentCategories.parentId, parentId) : isNull(schema.equipmentCategories.parentId));
   const position = rows.reduce((m, r) => Math.max(m, r.position), 0) + 1;
   await db.insert(schema.equipmentCategories).values({ name, parentId, position });
   revalidatePath("/materiel");
-  redirect("/materiel?ok=cat");
+  redirect("/materiel?gerer=categories&ok=ajoute");
 }
 
 export async function renameCategory(fd: FormData) {
@@ -118,7 +118,7 @@ export async function renameCategory(fd: FormData) {
   const name = s(fd, "name");
   if (id && name) await db.update(schema.equipmentCategories).set({ name }).where(eq(schema.equipmentCategories.id, id));
   revalidatePath("/materiel");
-  redirect("/materiel");
+  redirect("/materiel?gerer=categories&ok=renomme");
 }
 
 export async function moveCategory(id: number, dir: -1 | 1) {
@@ -130,32 +130,32 @@ export async function moveCategory(id: number, dir: -1 | 1) {
     .orderBy(asc(schema.equipmentCategories.position), asc(schema.equipmentCategories.id));
   const i = siblings.findIndex((c) => c.id === id);
   const j = i + dir;
-  if (i < 0 || j < 0 || j >= siblings.length) redirect("/materiel");
+  if (i < 0 || j < 0 || j >= siblings.length) redirect("/materiel?gerer=categories");
   await db.update(schema.equipmentCategories).set({ position: siblings[j].position }).where(eq(schema.equipmentCategories.id, siblings[i].id));
   await db.update(schema.equipmentCategories).set({ position: siblings[i].position }).where(eq(schema.equipmentCategories.id, siblings[j].id));
   revalidatePath("/materiel");
-  redirect("/materiel");
+  redirect("/materiel?gerer=categories");
 }
 
 export async function deleteCategory(id: number) {
   await requirePerm("materiel", "write");
   const kids = await db.select().from(schema.equipmentCategories).where(eq(schema.equipmentCategories.parentId, id));
   const used = await db.select({ id: schema.equipment.id }).from(schema.equipment).where(eq(schema.equipment.categoryId, id));
-  if (kids.length || used.length) redirect("/materiel?err=cat");
+  if (kids.length || used.length) redirect("/materiel?gerer=categories&err=cat");
   await db.delete(schema.equipmentCategories).where(eq(schema.equipmentCategories.id, id));
   revalidatePath("/materiel");
-  redirect("/materiel");
+  redirect("/materiel?gerer=categories&ok=supprime");
 }
 
 export async function createLocation(fd: FormData) {
   await requirePerm("materiel", "write");
   const name = s(fd, "name");
-  if (!name) redirect("/materiel");
+  if (!name) redirect("/materiel?gerer=emplacements&err=nom");
   const rows = await db.select().from(schema.equipmentLocations);
   const position = rows.reduce((m, r) => Math.max(m, r.position), 0) + 1;
   await db.insert(schema.equipmentLocations).values({ name, position });
   revalidatePath("/materiel");
-  redirect("/materiel");
+  redirect("/materiel?gerer=emplacements&ok=ajoute");
 }
 
 export async function renameLocation(fd: FormData) {
@@ -164,14 +164,14 @@ export async function renameLocation(fd: FormData) {
   const name = s(fd, "name");
   if (id && name) await db.update(schema.equipmentLocations).set({ name }).where(eq(schema.equipmentLocations.id, id));
   revalidatePath("/materiel");
-  redirect("/materiel");
+  redirect("/materiel?gerer=emplacements&ok=renomme");
 }
 
 export async function deleteLocation(id: number) {
   await requirePerm("materiel", "write");
   await db.delete(schema.equipmentLocations).where(eq(schema.equipmentLocations.id, id));
   revalidatePath("/materiel");
-  redirect("/materiel");
+  redirect("/materiel?gerer=emplacements&ok=supprime");
 }
 
 export async function reportBreakdown(id: number, fd: FormData) {

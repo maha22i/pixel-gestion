@@ -611,7 +611,7 @@ export function ContractEditor({
         </div>
 
         {/* Barre d'actions (mobile / tablette) */}
-        <div className="sticky bottom-0 z-10 -mx-3 mt-6 border-t border-navy-100 bg-white/95 px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] shadow-[0_-12px_30px_-24px_rgba(24,34,44,0.6)] backdrop-blur sm:-mx-8 sm:px-8 lg:-mx-10 lg:px-10 xl:hidden">
+        <div className="sticky bottom-0 z-10 -mx-3 mt-6 border-t border-navy-100 bg-white/95 px-3 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] backdrop-blur sm:-mx-8 sm:px-8 lg:-mx-10 lg:px-10 xl:hidden">
           {warnLabels.length > 0 && <p className="mb-2 flex items-center gap-1.5 text-[12px] font-bold text-amber-800"><AlertTriangle size={14} /> À compléter : {warnLabels.join(", ")}</p>}
           <div className="flex items-center gap-2">
             {!asTemplate && (

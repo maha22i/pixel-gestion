@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { asc, desc, eq, inArray, and, gte, lte, sql } from "drizzle-orm";
 import {
   AlarmClock, CalendarCheck, CalendarX2, ChevronLeft, ChevronRight, Clock, Download, FileSpreadsheet, FileText,
-  Hourglass, MapPin, PenLine, Plane, TimerReset, UserCheck, UserX, Users,
+  Hourglass, MapPin, PenLine, Plane, TimerReset, UserCheck, UserX, Users, X,
 } from "lucide-react";
 import { db, schema } from "@/db";
 import { requirePerm } from "@/lib/auth";
@@ -20,6 +20,7 @@ import { IpUpdate } from "./IpUpdate";
 import { AutoSubmitForm } from "./AutoSubmit";
 import { DayTimeline, TimelineScale } from "./DayTimeline";
 import { AutoRefresh } from "@/components/AutoRefresh";
+import { Modal } from "@/components/Modal";
 
 export const dynamic = "force-dynamic";
 
@@ -44,11 +45,13 @@ function monthLabel(month: string) {
   return new Date(Date.UTC(y, m - 1, 15)).toLocaleDateString("fr-FR", { month: "long", year: "numeric", timeZone: "UTC" });
 }
 
-export default async function PresencesPage({ searchParams }: { searchParams: { vue?: string; mois?: string; employe?: string; ok?: string; e?: string } }) {
+export default async function PresencesPage({ searchParams }: { searchParams: { vue?: string; mois?: string; employe?: string; ok?: string; e?: string; corriger?: string; qui?: string; jour?: string; type?: string; date?: string } }) {
   await requirePerm("presences", "write");
   await ensureAttendanceAlerts();
   const clock = djiboutiClock();
   const vue = searchParams.vue === "mois" || searchParams.vue === "valider" ? searchParams.vue : "jour";
+  // Jour affiché dans la vue « Jour » (pas de date future).
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(searchParams.date ?? "") && searchParams.date! <= clock.day ? searchParams.date! : clock.day;
   const month = /^\d{4}-\d{2}$/.test(searchParams.mois ?? "") ? searchParams.mois! : clock.day.slice(0, 7);
   const people: Person[] = await db.select({ id: schema.users.id, name: schema.users.name, color: schema.users.color, jobTitle: schema.users.jobTitle })
     .from(schema.users).where(eq(schema.users.active, true)).orderBy(asc(schema.users.name));
@@ -78,11 +81,27 @@ export default async function PresencesPage({ searchParams }: { searchParams: { 
   const todayRaw = new Date(`${clock.day}T12:00:00+03:00`).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Africa/Djibouti" });
   const today = todayRaw.charAt(0).toUpperCase() + todayRaw.slice(1);
 
+  // Adresse de la vue courante (sans la fenêtre de correction) et lien pour l'ouvrir.
+  const base = new URLSearchParams();
+  if (vue !== "jour") base.set("vue", vue);
+  if (vue === "mois") base.set("mois", month);
+  if (vue === "jour" && day !== clock.day) base.set("date", day);
+  if (employeeId) base.set("employe", String(employeeId));
+  const here = `/presences${base.toString() ? `?${base}` : ""}`;
+  const correctHref = (o: { qui?: number; jour?: string; type?: "arrivee" | "depart" } = {}) => {
+    const q = new URLSearchParams(base);
+    q.set("corriger", "1");
+    if (o.qui) q.set("qui", String(o.qui));
+    if (o.jour) q.set("jour", o.jour);
+    if (o.type) q.set("type", o.type);
+    return `/presences?${q}`;
+  };
+
   const tab = (key: string, href: string, label: React.ReactNode) => (
     <Link
       href={href}
       aria-current={vue === key ? "page" : undefined}
-      className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-bold transition ${vue === key ? "bg-white text-navy shadow-sm ring-1 ring-navy-100" : "text-navy-600/75 hover:text-navy"}`}
+      className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-2 text-sm font-bold transition ${vue === key ? "bg-white text-navy  ring-1 ring-navy-100" : "text-navy-600/75 hover:text-navy"}`}
     >
       {label}
     </Link>
@@ -94,29 +113,43 @@ export default async function PresencesPage({ searchParams }: { searchParams: { 
         title="Présences"
         subtitle={today}
         actions={
-          <nav className="flex flex-wrap gap-1 rounded-xl bg-navy-50/80 p-1 ring-1 ring-navy-100/70">
-            {tab("jour", "/presences", "Aujourd'hui")}
-            {tab("mois", `/presences?vue=mois&mois=${month}`, "Mois")}
-            {tab("valider", "/presences?vue=valider", <>À valider{toReview > 0 && <span className="rounded-full bg-gold px-1.5 text-[11px] text-navy-900">{toReview}</span>}</>)}
-          </nav>
+          <div className="flex flex-wrap items-center gap-2">
+            <nav className="flex flex-wrap gap-1 rounded-xl bg-navy-50/80 p-1 ring-1 ring-navy-100/70">
+              {tab("jour", "/presences", "Jour")}
+              {tab("mois", `/presences?vue=mois&mois=${month}`, "Mois")}
+              {tab("valider", "/presences?vue=valider", <>À valider{toReview > 0 && <span className="rounded-full bg-gold px-1.5 text-[11px] text-navy-900">{toReview}</span>}</>)}
+            </nav>
+            <Link href={correctHref()} scroll={false} className="btn-gold"><PenLine size={16} /> Corriger un pointage</Link>
+          </div>
         }
       />
       <Flash message={searchParams.ok ? messages[searchParams.ok] : ""} clear={["ok"]} />
       <Flash tone="error" message={searchParams.e ? errors[searchParams.e] : ""} clear={["e"]} />
       <IpUpdate known={ipKnown} ip={ip} />
-      {vue === "jour" && <Today employeeId={employeeId} month={month} people={people} />}
+      {vue === "jour" && <Today day={day} employeeId={employeeId} month={month} people={people} correctHref={correctHref} />}
       {vue === "mois" && (employeeId
         ? <Employee month={month} employeeId={employeeId} people={people} today={clock.day} />
         : <Team month={month} people={people} today={clock.day} />)}
       {vue === "valider" && <Queue />}
+      {searchParams.corriger && (
+        <CorrectionModal
+          people={people}
+          closeHref={here}
+          userId={Number(searchParams.qui) || employeeId || undefined}
+          day={/^\d{4}-\d{2}-\d{2}$/.test(searchParams.jour ?? "") ? searchParams.jour! : day}
+          kind={searchParams.type === "depart" ? "depart" : "arrivee"}
+        />
+      )}
     </>
   );
 }
 
 /* ─────────────────────────── Aujourd'hui ─────────────────────────── */
 
-async function Today({ employeeId, month, people }: { employeeId: number; month: string; people: Person[] }) {
-  const live = await todayLive();
+async function Today({ day, employeeId, month, people, correctHref }: { day: string; employeeId: number; month: string; people: Person[]; correctHref: (o?: { qui?: number; jour?: string; type?: "arrivee" | "depart" }) => string }) {
+  const live = await todayLive(day);
+  const isToday = live.isToday;
+  const dq = isToday ? "" : `date=${day}&`;
   const { stats, schedule } = live;
   const sites = await siteNames();
   const selected = live.rows.find((r) => r.person.id === employeeId) ?? null;
@@ -128,11 +161,12 @@ async function Today({ employeeId, month, people }: { employeeId: number; month:
 
   return (
     <div className="space-y-6">
-      <AutoRefresh seconds={60} />
+      {isToday && <AutoRefresh seconds={60} />}
+      <DayNav day={day} today={live.realToday} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <Stat label="Présents" value={<>{stats.present}<span className="text-base text-navy-600/50"> / {stats.total}</span></>} hint={`${stats.onSite} au bureau · ${stats.left} parti(s)`} tone="green" icon={<UserCheck size={18} />} />
+        <Stat label="Présents" value={<>{stats.present}<span className="text-base text-navy-600/50"> / {stats.total}</span></>} hint={isToday ? `${stats.onSite} au bureau · ${stats.left} parti(s)` : stats.forgot ? `dont ${stats.forgot} départ(s) oublié(s)` : "Présents ce jour-là"} tone="green" icon={<UserCheck size={18} />} />
         <Stat label="En retard" value={stats.late} hint={`Après ${schedule.startTime} + ${schedule.lateToleranceMin} min`} tone={stats.late ? "red" : "navy"} icon={<AlarmClock size={18} />} />
-        <Stat label={live.clock.minutes < end ? "Pas encore pointé" : "Absents"} value={stats.notYet + stats.absent} hint={stats.justified ? `+ ${stats.justified} absence(s) justifiée(s)` : "Sans justificatif"} tone={stats.notYet + stats.absent ? "gold" : "navy"} icon={<UserX size={18} />} />
+        <Stat label={isToday && live.clock.minutes < end ? "Pas encore pointé" : "Absents"} value={stats.notYet + stats.absent} hint={stats.justified ? `+ ${stats.justified} absence(s) justifiée(s)` : "Sans justificatif"} tone={stats.notYet + stats.absent ? "gold" : "navy"} icon={<UserX size={18} />} />
         <Stat label="À valider" value={stats.mission + stats.pending} hint={stats.pending + stats.mission ? <Link href="/presences?vue=valider" className="link">Valider</Link> : "Rien en attente"} tone="blue" icon={<Plane size={18} />} />
         <Stat label="Temps travaillé" value={formatHM(stats.workedMin)} hint={stats.overtimeMin ? `dont ${dur(stats.overtimeMin)} d'heures sup` : `Horaire ${schedule.startTime} – ${schedule.endTime}`} icon={<Clock size={18} />} className="col-span-2 lg:col-span-1" />
       </div>
@@ -143,11 +177,11 @@ async function Today({ employeeId, month, people }: { employeeId: number; month:
       {selected && (
         <SectionCard
           id="detail"
-          title={`Pointages du jour · ${selected.person.name}`}
+          title={`Pointages ${isToday ? "du jour" : `du ${formatDjiboutiDate(day)}`} · ${selected.person.name}`}
           action={
             <>
               <Link className="btn-ghost btn-sm" href={`/presences?vue=mois&mois=${month}&employe=${selected.person.id}`}>Voir le mois</Link>
-              <Link className="btn-ghost btn-sm" href="/presences">Fermer</Link>
+              <Link className="btn-ghost btn-sm" href={`/presences${isToday ? "" : `?date=${day}`}`}>Fermer</Link>
             </>
           }
         >
@@ -156,7 +190,7 @@ async function Today({ employeeId, month, people }: { employeeId: number; month:
       )}
 
       <SectionCard
-        title="Équipe aujourd'hui"
+        title={isToday ? "Équipe aujourd'hui" : `Équipe le ${formatDjiboutiDate(day)}`}
         flush
         action={<span className="text-navy-600/70">Clique un nom pour le détail · <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" /> en cours <span className="ml-1 inline-block h-2 w-2 rounded-full bg-navy-700" /> terminé</span>}
       >
@@ -165,7 +199,7 @@ async function Today({ employeeId, month, people }: { employeeId: number; month:
           <ul className="divide-y divide-navy-100/70 md:hidden">
             {live.rows.map((r) => (
               <li key={r.person.id}>
-                <Link href={`/presences?employe=${r.person.id}#detail`} className={`block px-4 py-3 ${r.person.id === employeeId ? "bg-gold/15" : ""}`}>
+                <Link href={`/presences?${dq}employe=${r.person.id}#detail`} className={`block px-4 py-3 ${r.person.id === employeeId ? "bg-gold/15" : ""}`}>
                   <div className="flex items-center gap-3">
                     <Avatar name={r.person.name} color={colors.get(r.person.id)} />
                     <span className="min-w-0 flex-1">
@@ -194,7 +228,7 @@ async function Today({ employeeId, month, people }: { employeeId: number; month:
                 {live.rows.map((r) => (
                   <tr key={r.person.id} className={`clickable ${r.person.id === employeeId ? "bg-gold/15" : ""}`}>
                     <td>
-                      <Link href={`/presences?employe=${r.person.id}#detail`} className="row-hit flex items-center gap-3">
+                      <Link href={`/presences?${dq}employe=${r.person.id}#detail`} className="row-hit flex items-center gap-3">
                         <Avatar name={r.person.name} color={colors.get(r.person.id)} />
                         <span className="min-w-0">
                           <span className="block font-bold text-navy">{r.person.name}</span>
@@ -207,7 +241,7 @@ async function Today({ employeeId, month, people }: { employeeId: number; month:
                         {r.live === "sur_place" && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />}
                         {LIVE_LABEL[r.live]}
                       </span>
-                      {r.row.detail && r.live !== "justifie" && <span className="mt-1 block text-xs text-navy-600/70">{r.row.detail}</span>}
+                      {r.row.detail && r.live !== "justifie" && r.live !== "depart_oublie" && <span className="mt-1 block text-xs text-navy-600/70">{r.row.detail}</span>}
                       {r.live === "justifie" && <span className="mt-1 block text-xs text-navy-600/70">{r.row.detail}</span>}
                     </td>
                     <td className="tabular-nums">
@@ -218,10 +252,11 @@ async function Today({ employeeId, month, people }: { employeeId: number; month:
                     <td className="num font-bold text-navy">
                       {r.workedMin ? formatHM(r.workedMin) : "—"}
                       {r.open && <span className="block text-[11px] font-semibold text-emerald-700">en cours</span>}
+                      {r.live === "depart_oublie" && <span className="block text-[11px] font-semibold text-amber-700">sans départ</span>}
                     </td>
                     <td className={`num ${r.overtimeMin ? "font-bold text-amber-700" : "text-navy-600/50"}`}>{r.overtimeMin ? `+${dur(r.overtimeMin)}` : "—"}</td>
                     <td className="hidden xl:table-cell">
-                      <DayTimeline segments={r.segments} start={start} end={end} now={live.clock.minutes} />
+                      <DayTimeline segments={r.segments} start={start} end={end} now={isToday ? live.clock.minutes : undefined} />
                     </td>
                   </tr>
                 ))}
@@ -232,21 +267,20 @@ async function Today({ employeeId, month, people }: { employeeId: number; month:
         </>)}
       </SectionCard>
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <Corrections people={people} />
-        {forgotten.length > 0 && (
+      {forgotten.length > 0 && (
+        <div className="grid gap-6 xl:grid-cols-2">
           <SectionCard title={`Départs oubliés (${forgotten.length})`} className="h-fit">
             <ul className="divide-y divide-navy-100/70">
               {forgotten.map((row) => (
                 <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5 text-sm">
                   <span><span className="font-bold text-navy">{row.name}</span> · {formatDjiboutiDate(String(row.day).slice(0, 10))} · arrivée {formatDjiboutiTime(new Date(row.punched_at))}</span>
-                  <a href="#correction" className="link text-xs">Corriger</a>
+                  <Link href={correctHref({ qui: row.user_id, jour: String(row.day).slice(0, 10), type: "depart" })} scroll={false} className="btn-ghost btn-sm"><PenLine size={14} /> Corriger</Link>
                 </li>
               ))}
             </ul>
           </SectionCard>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -329,10 +363,7 @@ async function Team({ month, people, today }: { month: string; people: Person[];
         )}
       </SectionCard>
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <Absences people={people} month={month} />
-        <Corrections people={people} />
-      </div>
+      <Absences people={people} month={month} />
     </div>
   );
 }
@@ -420,10 +451,33 @@ async function Employee({ month, employeeId, people, today }: { month: string; e
         </div>
       </details>
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <Absences people={people} month={month} userId={employeeId} />
-        <Corrections people={people} userId={employeeId} />
+      <Absences people={people} month={month} userId={employeeId} />
+    </div>
+  );
+}
+
+const DAY_FMT = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+const shiftDay = (iso: string, n: number) => new Date(Date.parse(`${iso}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+
+/** Choix du jour affiché : jour précédent / suivant, calendrier, retour à aujourd'hui. */
+function DayNav({ day, today }: { day: string; today: string }) {
+  const href = (d: string) => (d === today ? "/presences" : `/presences?date=${d}`);
+  const label = DAY_FMT.format(new Date(`${day}T12:00:00Z`));
+  const next = shiftDay(day, 1);
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-1 rounded-xl bg-white p-1 ring-1 ring-navy-100">
+        <Link href={href(shiftDay(day, -1))} className="grid h-8 w-8 place-items-center rounded-lg text-navy hover:bg-navy-50" aria-label="Jour précédent"><ChevronLeft size={18} /></Link>
+        <span className="min-w-[13rem] px-2 text-center text-sm font-bold text-navy first-letter:uppercase">{day === today ? `Aujourd'hui · ${label}` : label}</span>
+        {next <= today
+          ? <Link href={href(next)} className="grid h-8 w-8 place-items-center rounded-lg text-navy hover:bg-navy-50" aria-label="Jour suivant"><ChevronRight size={18} /></Link>
+          : <span className="grid h-8 w-8 place-items-center rounded-lg text-navy-600/25" aria-hidden><ChevronRight size={18} /></span>}
       </div>
+      <AutoSubmitForm action="/presences" className="flex items-center gap-2">
+        <input className="input h-9 w-auto" type="date" name="date" defaultValue={day} max={today} aria-label="Choisir un jour" />
+        <noscript><button className="btn-primary btn-sm">Afficher</button></noscript>
+      </AutoSubmitForm>
+      {day !== today && <Link href="/presences" className="btn-ghost btn-sm">Revenir à aujourd'hui</Link>}
     </div>
   );
 }
@@ -435,7 +489,7 @@ function MonthBar({ month, employeeId, people }: { month: string; employeeId?: n
       {employeeId ? (
         <Link href={`/presences?vue=mois&mois=${month}`} className="btn-ghost btn-sm"><Users size={15} /> Toute l'équipe</Link>
       ) : null}
-      <div className="flex items-center gap-1 rounded-xl bg-white p-1 shadow-sm ring-1 ring-navy-100">
+      <div className="flex items-center gap-1 rounded-xl bg-white p-1 ring-1 ring-navy-100">
         <Link href={q(shiftMonth(month, -1))} className="grid h-8 w-8 place-items-center rounded-lg text-navy hover:bg-navy-50" aria-label="Mois précédent"><ChevronLeft size={18} /></Link>
         <span className="min-w-[9.5rem] px-2 text-center text-sm font-bold text-navy first-letter:uppercase">{monthLabel(month)}</span>
         <Link href={q(shiftMonth(month, 1))} className="grid h-8 w-8 place-items-center rounded-lg text-navy hover:bg-navy-50" aria-label="Mois suivant"><ChevronRight size={18} /></Link>
@@ -509,37 +563,60 @@ async function Absences({ people, month, userId }: { people: Person[]; month: st
   );
 }
 
-async function Corrections({ people, userId }: { people: Person[]; userId?: number }) {
+async function CorrectionModal({ people, closeHref, userId, day, kind }: { people: Person[]; closeHref: string; userId?: number; day: string; kind: "arrivee" | "depart" }) {
   const events = await db.select({
     id: schema.attendancePunchEvents.id,
     reason: schema.attendancePunchEvents.reason,
     createdAt: schema.attendancePunchEvents.createdAt,
     actor: schema.users.name,
   }).from(schema.attendancePunchEvents).leftJoin(schema.users, eq(schema.users.id, schema.attendancePunchEvents.actorId))
-    .where(eq(schema.attendancePunchEvents.action, "corrige")).orderBy(desc(schema.attendancePunchEvents.createdAt)).limit(6);
+    .where(eq(schema.attendancePunchEvents.action, "corrige")).orderBy(desc(schema.attendancePunchEvents.createdAt)).limit(4);
   return (
-    <SectionCard id="correction" title="Corriger un oubli de pointage" className="h-fit">
-      <form action={manualPunch} className="grid gap-3 md:grid-cols-2">
-        <label className="block"><span className="label">Employé</span>
-          <select name="userId" className="input" required defaultValue={userId ? String(userId) : undefined}>{people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-        </label>
-        <label className="block"><span className="label">Pointage</span>
-          <select name="kind" className="input"><option value="arrivee">Arrivée</option><option value="depart">Départ</option></select>
-        </label>
-        <label className="block"><span className="label">Date</span><input name="day" type="date" className="input" required /></label>
-        <label className="block"><span className="label">Heure</span><input name="time" type="time" className="input" required /></label>
-        <label className="block md:col-span-2"><span className="label">Motif</span><input name="note" className="input" placeholder="Obligatoire, ex. oubli de badge au départ" required /></label>
-        <button className="btn-primary md:col-span-2"><PenLine size={16} /> Enregistrer la correction</button>
-      </form>
-      {events.length > 0 && (
-        <div className="mt-4 border-t border-navy-100/70 pt-3">
-          <p className="mb-1 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-navy-600/60"><TimerReset size={13} /> Dernières corrections</p>
-          <ul className="space-y-1 text-sm text-navy-600">
-            {events.map((event) => <li key={event.id}>{formatDjiboutiDate(event.createdAt.toISOString().slice(0, 10))} {formatDjiboutiTime(event.createdAt)} · {event.actor ?? "—"} · {event.reason}</li>)}
-          </ul>
+    <Modal closeHref={closeHref} labelledBy="fix-title" width="max-w-xl">
+      <form action={manualPunch}>
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-navy-100 bg-white px-5 py-4 sm:px-6">
+          <div>
+            <h2 id="fix-title" className="text-lg font-bold text-navy">Corriger un pointage</h2>
+            <p className="text-sm text-navy-600/70">Ajoute une arrivée ou un départ oublié. La correction est tracée.</p>
+          </div>
+          <Link href={closeHref} scroll={false} className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-navy-600 transition hover:bg-navy-50 hover:text-navy" aria-label="Fermer" title="Fermer"><X size={18} /></Link>
         </div>
-      )}
-    </SectionCard>
+        <div className="grid gap-4 p-5 sm:grid-cols-2 sm:p-6">
+          <label className="block sm:col-span-2"><span className="label">Employé</span>
+            <select name="userId" className="input" required defaultValue={userId ? String(userId) : ""}>
+              <option value="" disabled>Choisir un employé</option>
+              {people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
+          <fieldset className="sm:col-span-2">
+            <legend className="label">Pointage à ajouter</legend>
+            <div className="grid grid-cols-2 gap-2">
+              {([["arrivee", "Arrivée"], ["depart", "Départ"]] as const).map(([k, label]) => (
+                <label key={k} className="cursor-pointer">
+                  <input type="radio" name="kind" value={k} defaultChecked={kind === k} className="peer sr-only" />
+                  <span className="flex h-10 items-center justify-center rounded-lg border border-navy-200 bg-white text-sm font-semibold text-navy-700 transition peer-checked:border-navy peer-checked:bg-navy peer-checked:text-white peer-focus-visible:ring-2 peer-focus-visible:ring-gold/60">{label}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <label className="block"><span className="label">Date</span><input name="day" type="date" className="input" defaultValue={day} required /></label>
+          <label className="block"><span className="label">Heure</span><input name="time" type="time" className="input" required autoFocus /></label>
+          <label className="block sm:col-span-2"><span className="label">Motif</span><input name="note" className="input" placeholder="ex. Oubli de badge au départ" required /></label>
+          {events.length > 0 && (
+            <div className="rounded-lg bg-navy-50/60 px-4 py-3 sm:col-span-2">
+              <p className="mb-1 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-navy-600/60"><TimerReset size={13} /> Dernières corrections</p>
+              <ul className="space-y-0.5 text-sm text-navy-600">
+                {events.map((event) => <li key={event.id} className="truncate">{formatDjiboutiDate(event.createdAt.toISOString().slice(0, 10))} {formatDjiboutiTime(event.createdAt)} · {event.actor ?? "—"} · {event.reason}</li>)}
+              </ul>
+            </div>
+          )}
+        </div>
+        <div className="sticky bottom-0 flex justify-end gap-2 border-t border-navy-100 bg-[#f7f8fa] px-5 py-4 sm:px-6">
+          <Link href={closeHref} scroll={false} className="btn-ghost">Annuler</Link>
+          <button className="btn-primary"><PenLine size={16} /> Enregistrer la correction</button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

@@ -1,5 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
+import { ABSENCE_KIND } from "@/lib/attendance/labels";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { and, eq, gte, lte } from "drizzle-orm";
@@ -99,7 +100,7 @@ export async function manualPunch(fd: FormData) {
   const time = String(fd.get("time") ?? "");
   const kind = fd.get("kind") === "depart" ? "depart" : "arrivee";
   const note = String(fd.get("note") ?? "").trim();
-  if (!userId || !/^\d{4}-\d{2}-\d{2}$/.test(day) || !/^\d{2}:\d{2}$/.test(time) || !note) redirect("/presences?vue=mois&e=correction");
+  if (!userId || !/^\d{4}-\d{2}-\d{2}$/.test(day) || !/^\d{2}:\d{2}$/.test(time) || !note) redirect("/presences?vue=mois&e=correction&corriger=1");
   const [punch] = await db.insert(schema.attendancePunches).values({
     userId,
     kind,
@@ -128,7 +129,7 @@ export async function saveAbsence(fd: FormData) {
   const kind = String(fd.get("kind") ?? "");
   const reason = String(fd.get("reason") ?? "").trim();
   if (!userId || !/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || endDate < startDate || !reason) redirect(`/presences?vue=mois&employe=${userId || ""}&e=absence`);
-  if (!["conge", "maladie", "mission", "autre"].includes(kind)) redirect(`/presences?vue=mois&employe=${userId}&e=absence`);
+  if (!(kind in ABSENCE_KIND)) redirect(`/presences?vue=mois&employe=${userId}&e=absence`);
   const overlap = await db.select({ id: schema.attendanceAbsences.id }).from(schema.attendanceAbsences).where(and(
     eq(schema.attendanceAbsences.userId, userId),
     lte(schema.attendanceAbsences.startDate, endDate),

@@ -151,7 +151,7 @@ export default async function InvoicePage({ params, searchParams }: { params: { 
 
           {/* Encaisser */}
           {payWrite && (
-            <form id="encaisser" action={addPayment.bind(null, id)} encType="multipart/form-data" className="card card-pad scroll-mt-20 space-y-3">
+            <form id="encaisser" action={addPayment.bind(null, id)} className="card card-pad scroll-mt-20 space-y-3">
               <p className="h-section">Enregistrer un paiement</p>
               <div className="grid grid-cols-1 gap-2 min-[480px]:grid-cols-2">
                 <div><label className="label">Montant (FDJ)</label><input name="amount" type="number" min={1} max={fin.remaining} className="input" defaultValue={nextDue?.remaining ?? fin.remaining} required /></div>

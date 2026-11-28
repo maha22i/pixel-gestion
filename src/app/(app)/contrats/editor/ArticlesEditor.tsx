@@ -127,7 +127,7 @@ export function ArticlesEditor({
           const num = numbers[sec.key] ?? "";
           const annex = sec.kind === "annex";
           return (
-            <li key={`${id}-${i}`} className={`rounded-xl border transition ${isOpen ? "border-gold/60 bg-white shadow-sm" : "border-navy-100 bg-white/70 hover:border-navy-200"}`}>
+            <li key={`${id}-${i}`} className={`rounded-xl border transition ${isOpen ? "border-gold/60 bg-white " : "border-navy-100 bg-white/70 hover:border-navy-200"}`}>
               <div className="flex items-center gap-2 p-2 pl-3">
                 <button
                   type="button"

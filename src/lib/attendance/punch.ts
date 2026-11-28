@@ -1,4 +1,5 @@
 import "server-only";
+import { usersWith } from "@/lib/permissions";
 import { cookies, headers } from "next/headers";
 import { and, desc, eq, ne, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
@@ -204,10 +205,7 @@ async function missionLinkOk(user: SessionUser, input: Input): Promise<{ ok: tru
 }
 
 export async function presenceRecipients(except?: number) {
-  const users = await db.select({ id: schema.users.id, role: schema.users.role }).from(schema.users).where(eq(schema.users.active, true));
-  const perms = await db.select().from(schema.permissions).where(eq(schema.permissions.module, "presences"));
-  const write = new Set(perms.filter((p) => p.level === "write").map((p) => p.userId));
-  return users.filter((u) => u.id !== except && (u.role === "admin" || u.role === "manager" || write.has(u.id))).map((u) => u.id);
+  return (await usersWith("presences", "write")).filter((id) => id !== except);
 }
 
 function statusMessage(kind: "arrivee" | "depart", status: string, time: string, siteName: string, reasons: string[]) {

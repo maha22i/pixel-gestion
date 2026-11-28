@@ -1,11 +1,13 @@
 "use server";
 import { redirect } from "next/navigation";
+import { NOTIFY_KEYS } from "@/lib/notifyTypes";
 import { revalidatePath } from "next/cache";
 import { and, eq, ne, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { db, schema } from "@/db";
 import { requireAdmin, requireUser } from "@/lib/auth";
-import { MODULES, normalizeRole } from "@/lib/modules";
+import { MODULES, moduleLevels, normalizeRole } from "@/lib/modules";
+import { roleDefaults } from "@/lib/permissions";
 import { imageExt, logoTooBig } from "@/lib/logo";
 import fs from "node:fs";
 import path from "node:path";
@@ -13,10 +15,9 @@ import path from "node:path";
 const LEVELS = ["none", "own", "read", "write"];
 
 function permsFrom(fd: FormData) {
-  return MODULES.map((m) => {
+  return MODULES.filter((m) => fd.has(`perm_${m.key}`)).map((m) => {
     const v = String(fd.get(`perm_${m.key}`) ?? "none");
-    let level = LEVELS.includes(v) ? v : "none";
-    if (m.key !== "taches" && m.key !== "presences" && level === "own") level = "none";
+    const level = LEVELS.includes(v) && (moduleLevels(m.key) as string[]).includes(v) ? v : "none";
     return { module: m.key, level };
   });
 }
@@ -44,61 +45,89 @@ function profileFrom(fd: FormData) {
 }
 
 export async function createUser(fd: FormData) {
-  await requireAdmin();
+  const me = await requireAdmin();
   const name = String(fd.get("name") ?? "").trim();
   const email = String(fd.get("email") ?? "").trim().toLowerCase();
   const password = String(fd.get("password") ?? "");
   const role = normalizeRole(String(fd.get("role") ?? "technician"));
-  if (!name || !email || password.length < 8) redirect("/utilisateurs/nouveau?e=champs");
+  if (!name || !email || password.length < 8) redirect("/utilisateurs?nouveau=1&e=champs");
   const [exists] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, email));
-  if (exists) redirect("/utilisateurs/nouveau?e=email");
+  if (exists) redirect("/utilisateurs?nouveau=1&e=email");
+  // Contrat de travail saisi avec le compte (facultatif : « Sans contrat »).
+  const kind = String(fd.get("contractType") ?? "aucun");
+  const start = String(fd.get("contractStart") ?? "").trim();
+  const end = String(fd.get("contractEnd") ?? "").trim();
+  const DATE = /^\d{4}-\d{2}-\d{2}$/;
+  const withContract = ["cdi", "cdd", "stage", "prestataire"].includes(kind);
+  if (withContract && (!DATE.test(start) || (end && (!DATE.test(end) || end < start)) || ((kind === "cdd" || kind === "stage") && !end))) {
+    redirect("/utilisateurs?nouveau=1&e=contrat");
+  }
   const avatarPath = await avatarFrom(fd);
-  if (avatarPath === null) redirect("/utilisateurs/nouveau?e=avatar");
+  if (avatarPath === null) redirect("/utilisateurs?nouveau=1&e=avatar");
   const [u] = await db
     .insert(schema.users)
     .values({ name, email, role, passwordHash: await bcrypt.hash(password, 12), ...profileFrom(fd), avatarPath: avatarPath ?? null })
     .returning({ id: schema.users.id });
-  await db.insert(schema.permissions).values(permsFrom(fd).map((p) => ({ ...p, userId: u.id })));
+  if (withContract) {
+    await db.insert(schema.employmentContracts).values({
+      userId: u.id,
+      contractType: kind,
+      jobTitle: profileFrom(fd).jobTitle ?? "",
+      startDate: start,
+      endDate: kind === "cdi" ? null : end || null,
+      createdBy: me.id,
+    });
+    revalidatePath("/rh");
+  }
+  // Aucun droit personnel à la création : le compte hérite des droits par défaut de son rôle (Paramètres).
   revalidatePath("/utilisateurs");
-  redirect("/utilisateurs");
+  redirect(`/utilisateurs?ok=cree&droits=${u.id}`);
 }
 
-export async function updateUser(id: number, fd: FormData) {
+/** Fenêtre « Modifier » : compte uniquement (les droits ne sont pas touchés). */
+export async function updateAccount(id: number, fd: FormData) {
   const me = await requireAdmin();
+  const back = `/utilisateurs?modifier=${id}`;
   const name = String(fd.get("name") ?? "").trim();
   const email = String(fd.get("email") ?? "").trim().toLowerCase();
-  let role = normalizeRole(String(fd.get("role") ?? "technician"));
-  let active = fd.get("active") === "on";
-  if (id === me.id) { role = "admin"; active = true; }
-  const [dup] = await db.select({ id: schema.users.id }).from(schema.users)
-    .where(and(eq(schema.users.email, email), ne(schema.users.id, id)));
-  if (dup) redirect(`/utilisateurs/${id}?e=email`);
+  if (!name || !email) redirect(`${back}&e=champs`);
+  const active = id === me.id ? true : fd.get("active") === "on";
+  const [dup] = await db.select({ id: schema.users.id }).from(schema.users).where(and(eq(schema.users.email, email), ne(schema.users.id, id)));
+  if (dup) redirect(`${back}&e=email`);
   const avatarPath = await avatarFrom(fd);
-  if (avatarPath === null) redirect(`/utilisateurs/${id}?e=avatar`);
-  await db.update(schema.users).set({
-    name, email, role, active, ...profileFrom(fd),
-    ...(avatarPath ? { avatarPath } : {}),
-  }).where(eq(schema.users.id, id));
+  if (avatarPath === null) redirect(`${back}&e=avatar`);
   const password = String(fd.get("password") ?? "");
-  if (password) {
-    if (password.length < 8) redirect(`/utilisateurs/${id}?e=mdp`);
-    await db.update(schema.users).set({ passwordHash: await bcrypt.hash(password, 12) }).where(eq(schema.users.id, id));
-  }
-  for (const p of permsFrom(fd)) {
-    await db.execute(sql`
-      INSERT INTO permissions (user_id, module, level) VALUES (${id}, ${p.module}, ${p.level})
-      ON CONFLICT (user_id, module) DO UPDATE SET level = EXCLUDED.level`);
-  }
+  if (password && password.length < 8) redirect(`${back}&e=mdp`);
+  await db.update(schema.users).set({ name, email, active, ...profileFrom(fd), ...(avatarPath ? { avatarPath } : {}) }).where(eq(schema.users.id, id));
+  if (password) await db.update(schema.users).set({ passwordHash: await bcrypt.hash(password, 12) }).where(eq(schema.users.id, id));
   revalidatePath("/utilisateurs");
-  redirect("/utilisateurs?ok=1");
+  revalidatePath("/", "layout");
+  redirect("/utilisateurs?ok=compte");
 }
 
-export async function deleteUser(id: number) {
+/** Fenêtre « Droits » : rôle et niveau d'accès par module. */
+export async function updatePermissions(id: number, fd: FormData) {
+  const me = await requireAdmin();
+  const role = id === me.id ? "admin" : normalizeRole(String(fd.get("role") ?? "technician"));
+  await db.update(schema.users).set({ role }).where(eq(schema.users.id, id));
+  // On ne garde en droits personnels que ce qui diffère du défaut du rôle ; le reste est hérité.
+  await db.delete(schema.permissions).where(eq(schema.permissions.userId, id));
+  if (role !== "admin") {
+    const defaults = (await roleDefaults())[role];
+    const custom = permsFrom(fd).filter((p) => p.level !== defaults[p.module as keyof typeof defaults]);
+    if (custom.length) await db.insert(schema.permissions).values(custom.map((p) => ({ ...p, userId: id })));
+  }
+  revalidatePath("/utilisateurs");
+  revalidatePath("/", "layout");
+  redirect("/utilisateurs?ok=droits");
+}
+
+export async function deleteUser(id: number, _fd?: FormData) {
   const me = await requireAdmin();
   if (id === me.id) redirect("/utilisateurs");
   await db.delete(schema.users).where(eq(schema.users.id, id));
   revalidatePath("/utilisateurs");
-  redirect("/utilisateurs");
+  redirect("/utilisateurs?ok=supprime");
 }
 
 export async function changeOwnPassword(fd: FormData) {
@@ -114,8 +143,8 @@ export async function changeOwnPassword(fd: FormData) {
 
 export async function saveNotifyPrefs(fd: FormData) {
   const me = await requireUser();
-  const keys = ["assign", "mention", "comment", "due", "review", "blocked", "presence_refuse", "presence_telephone", "presence_absent", "presence_depart"];
-  const prefs = Object.fromEntries(keys.map((k) => [k, fd.get(`mail_${k}`) === "on"]));
+  const prefs = Object.fromEntries(NOTIFY_KEYS.map((k) => [k, fd.get(`mail_${k}`) === "on"]));
   await db.update(schema.users).set({ notifyPrefs: prefs }).where(eq(schema.users.id, me.id));
-  redirect("/profil?ok=1");
+  const back = String(fd.get("back") ?? "");
+  redirect(back === "/parametres?s=notifications" ? `${back}&ok=1` : "/profil?ok=notif");
 }

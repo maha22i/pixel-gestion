@@ -1,7 +1,7 @@
 export const MODULE_GROUPS = [
   {
     label: "Pilotage",
-    keys: ["tableau_de_bord", "projets", "taches", "planning", "suivi_equipe", "presences", "materiel"] as const,
+    keys: ["tableau_de_bord", "projets", "taches", "planning", "suivi_equipe", "presences", "rh", "materiel"] as const,
   },
   {
     label: "Commercial",
@@ -10,6 +10,10 @@ export const MODULE_GROUPS = [
   {
     label: "Finance",
     keys: ["factures", "paiements", "depenses"] as const,
+  },
+  {
+    label: "Outils",
+    keys: ["aicha"] as const,
   },
 ] as const;
 
@@ -20,6 +24,7 @@ export const MODULES = [
   { key: "planning", label: "Planning" },
   { key: "suivi_equipe", label: "Suivi de l'équipe" },
   { key: "presences", label: "Présences" },
+  { key: "rh", label: "Ressources humaines" },
   { key: "materiel", label: "Matériel" },
   { key: "clients", label: "Clients" },
   { key: "catalogue", label: "Catalogue" },
@@ -28,6 +33,7 @@ export const MODULES = [
   { key: "factures", label: "Factures" },
   { key: "paiements", label: "Paiements" },
   { key: "depenses", label: "Dépenses" },
+  { key: "aicha", label: "Aicha (assistante IA)" },
 ] as const;
 
 export type ModuleKey = (typeof MODULES)[number]["key"];
@@ -48,6 +54,20 @@ export const LEVEL_LABELS: Record<Level, string> = {
 };
 
 export const TASK_LEVELS: Level[] = ["none", "own", "read", "write"];
+
+/** Niveaux proposés pour chaque module (« les siens » seulement pour tâches et présences ; Aicha : accès ou non). */
+export function moduleLevels(key: ModuleKey): Level[] {
+  if (key === "taches" || key === "presences") return ["none", "own", "read", "write"];
+  if (key === "aicha") return ["none", "read"];
+  return ["none", "read", "write"];
+}
+
+/** Libellé court d'un niveau dans un module donné (pour les boutons). */
+export function levelShort(key: ModuleKey, level: Level) {
+  if (key === "aicha") return level === "none" ? "Aucun" : "Accès";
+  if (key === "rh") return { none: "Aucun", own: "Les siens", read: "Voir", write: "Valider" }[level];
+  return { none: "Aucun", own: "Les siens", read: "Lecture", write: "Écriture" }[level];
+}
 export const STANDARD_LEVELS: Level[] = ["none", "read", "write"];
 
 const ALL_WRITE = Object.fromEntries(MODULES.map((m) => [m.key, "write"])) as Record<ModuleKey, Level>;
@@ -71,6 +91,8 @@ export const ROLE_DEFAULTS: Record<AppRole, Record<ModuleKey, Level>> = {
     paiements: "read",
     depenses: "read",
     materiel: "write",
+    rh: "write",
+    aicha: "read",
   },
   technician: {
     ...NONE,
@@ -94,5 +116,7 @@ export function roleLabel(role: string | null | undefined) {
 
 export function levelLabel(module: ModuleKey, level: Level) {
   if (level === "own" && module === "presences") return "Ses pointages uniquement";
+  if (module === "aicha") return level === "none" ? "Aucun accès" : "Peut utiliser Aicha";
+  if (module === "rh") return level === "write" ? "Voit et valide les demandes" : level === "read" ? "Voit les demandes" : "Aucun accès";
   return LEVEL_LABELS[level];
 }

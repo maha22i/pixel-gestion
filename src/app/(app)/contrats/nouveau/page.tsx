@@ -62,7 +62,7 @@ export default async function NewContractPage({ searchParams }: { searchParams: 
               <Link
                 key={t.id}
                 href={href(searchParams, { modele: String(t.id) })}
-                className="card group flex flex-col p-5 transition hover:-translate-y-0.5 hover:ring-2 hover:ring-gold/70"
+                className="card group flex flex-col p-5 transition-colors hover:border-gold/70"
               >
                 <div className="flex items-start gap-3">
                   <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${secs.length ? "bg-navy text-white" : "bg-navy-50 text-navy-600"}`}>

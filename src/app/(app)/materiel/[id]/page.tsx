@@ -57,7 +57,7 @@ export default async function EquipmentPage({ params, searchParams }: { params: 
           <form action={deleteEquipment.bind(null, id)}>
             <ConfirmButton
               message="Supprimer ce matériel et son historique ?"
-              className="btn-danger h-11 px-4 text-sm shadow-[0_14px_22px_-18px_rgba(185,28,28,0.55)]"
+              className="btn-danger h-11 px-4 text-sm"
             >
               <Trash2 size={16} /> Supprimer
             </ConfirmButton>

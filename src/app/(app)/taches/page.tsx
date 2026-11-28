@@ -5,6 +5,10 @@ import { db, schema } from "@/db";
 import { requirePerm } from "@/lib/auth";
 import { PRIORITY, dateFr, taskSignal, today } from "@/lib/format";
 import { PageHeader, Empty, TaskMark } from "@/components/ui";
+import { Flash } from "@/components/Flash";
+import { Modal } from "@/components/Modal";
+import { Plus } from "lucide-react";
+import { TaskWizard } from "./[id]/TaskWizard";
 import { taskScope } from "@/lib/tasks";
 import { createTask, setStatus } from "./actions";
 
@@ -39,9 +43,55 @@ export default async function TasksPage({ searchParams }: { searchParams: Record
         WHERE p.owner_id = ${user.id} OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = ${user.id})
         ORDER BY p.id DESC`)).rows as any[];
   const day = today();
+  const types = await db.select({ id: schema.taskTypes.id, name: schema.taskTypes.name }).from(schema.taskTypes).orderBy(asc(schema.taskTypes.position));
+  // Projets proposés dans la fenêtre de création, avec leur client.
+  const wizardProjects = (await db.execute(user.role === "admin"
+    ? sql`SELECT p.id, p.title, c.name AS client FROM projects p LEFT JOIN clients c ON c.id = p.client_id ORDER BY p.id DESC`
+    : sql`SELECT p.id, p.title, c.name AS client FROM projects p LEFT JOIN clients c ON c.id = p.client_id
+          WHERE p.owner_id = ${user.id} OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = p.id AND pm.user_id = ${user.id})
+          ORDER BY p.id DESC`)).rows as { id: number; title: string; client: string | null }[];
+  // Adresse de la liste avec ses filtres actuels (sans la fenêtre ni les messages).
+  const keep = new URLSearchParams();
+  for (const [k, v] of Object.entries(searchParams)) if (v && !["nouvelle", "ok", "e", "t"].includes(k)) keep.set(k, v);
+  const here = `/taches${keep.toString() ? `?${keep}` : ""}`;
+  const withParam = (extra: string) => `${here}${here.includes("?") ? "&" : "?"}${extra}`;
   return (
     <div>
-        <PageHeader title="Tâches" subtitle="Toutes les tâches, rangées par projet. Clique une ligne pour ouvrir la page de détails." actions={<Link href="/taches/modeles" className="btn-ghost">Modèles</Link>} />
+        <PageHeader
+          title="Tâches"
+          subtitle="Toutes les tâches, rangées par projet. Clique une ligne pour ouvrir la page de détails."
+          actions={
+            <>
+              <Link href="/taches/modeles" className="btn-ghost">Modèles</Link>
+              <Link href={withParam("nouvelle=1")} scroll={false} className="btn-gold"><Plus size={16} /> Ajouter</Link>
+            </>
+          }
+        />
+        <Flash message={searchParams.ok === "creee" ? "Tâche créée." : ""} clear={["ok"]} />
+        <Flash tone="error" message={searchParams.e === "titre" ? "Le titre de la tâche est obligatoire." : ""} clear={["e"]} />
+        {searchParams.nouvelle && (
+          <Modal closeHref={here} labelledBy="task-edit-title" width="max-w-2xl">
+            <TaskWizard
+              mode="create"
+              action={createTask}
+              back={withParam("ok=creee")}
+              closeHref={here}
+              priorities={PRIORITY}
+              projects={wizardProjects}
+              types={types}
+              people={people.filter((p) => p.active).map((p) => ({ id: p.id, name: p.name, color: p.color || "#2C3E50", jobTitle: p.jobTitle }))}
+              canAssign={user.role === "admin"}
+              me={{ id: user.id, name: user.name, color: people.find((p) => p.id === user.id)?.color || "#2C3E50", jobTitle: null }}
+              task={{
+                title: "", description: "", typeId: null, priority: "normale",
+                projectId: Number(searchParams.projet) || null, externalUrl: "",
+                startDate: "", startTime: "", dueDate: "", dueTime: "",
+                assignees: user.role === "admin" ? [] : [user.id],
+                subtasks: [],
+              }}
+            />
+          </Modal>
+        )}
         <div className="mb-4 flex flex-wrap gap-2">
           <Link href="/taches" className={!searchParams.projet ? "btn-primary btn-sm" : "btn-ghost btn-sm"}>Tous les projets</Link>
           {projects.map((p) => (
@@ -53,28 +103,6 @@ export default async function TasksPage({ searchParams }: { searchParams: Record
           <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-sky-600" /> En cours</span>
           <span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Terminé</span>
         </div>
-        <form action={createTask} className="card card-pad mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5 lg:items-end">
-          <div className="lg:col-span-2">
-            <label className="label">Nouvelle tâche</label>
-            <input name="title" required placeholder="Ex. Monter le teaser" className="input" />
-          </div>
-          <div>
-            <label className="label">Projet</label>
-            <select name="projectId" className="input" defaultValue={searchParams.projet ?? ""}>
-              <option value="">Sans projet</option>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">Pour qui</label>
-            {user.role === "admin" ? (
-              <select name="assignees" className="input">{people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-            ) : (
-              <input className="input" value={user.name} disabled />
-            )}
-          </div>
-          <button className="btn-primary">Ajouter</button>
-        </form>
         {rows.length === 0 ? <Empty title="Aucune tâche pour ce filtre" /> : [...rows.reduce((map, t) => {
           const key = t.project_title || "Sans projet";
           map.set(key, [...(map.get(key) ?? []), t]);

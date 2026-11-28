@@ -12,6 +12,7 @@ export async function PresenceToday() {
   if (stats.total === 0) return null;
   const late = live.rows.filter((r) => r.row.lateMin > 0);
   const missing = live.rows.filter((r) => r.live === "non_pointe" || r.live === "absent");
+  const yesterdayHref = "/presences?date=" + new Date(Date.parse(`${live.realToday}T12:00:00Z`) - 86400000).toISOString().slice(0, 10);
   const pct = stats.total ? Math.round((stats.present / stats.total) * 100) : 0;
   const restDay = live.rows.every((r) => r.live === "repos" || r.live === "ferie");
 
@@ -29,7 +30,10 @@ export async function PresenceToday() {
         <h2 className="flex items-center gap-2 text-[17px] font-bold text-navy">
           <CalendarCheck size={18} className="text-gold-600" /> Présences aujourd'hui
         </h2>
-        <Link href="/presences" className="link inline-flex items-center gap-1 text-sm">Voir le détail <ArrowRight size={14} /></Link>
+        <span className="flex items-center gap-4">
+          <Link href={yesterdayHref} className="text-sm font-semibold text-navy-600 hover:text-navy">Hier</Link>
+          <Link href="/presences" className="link inline-flex items-center gap-1 text-sm">Voir le détail <ArrowRight size={14} /></Link>
+        </span>
       </div>
 
       {restDay ? (

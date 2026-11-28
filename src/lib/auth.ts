@@ -1,10 +1,11 @@
 import "server-only";
+import { effectivePerms, roleDefaults } from "@/lib/permissions";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { MODULES, normalizeRole, type AppRole, type Level, type ModuleKey } from "./modules";
+import { normalizeRole, type AppRole, type Level, type ModuleKey } from "./modules";
 
 export const SESSION_COOKIE = "pf_session";
 export const SESSION_ACTIVITY_COOKIE = "pf_last_seen";
@@ -84,10 +85,9 @@ async function loadUser(uid: number): Promise<SessionUser | null> {
   const [u] = await db.select().from(schema.users).where(eq(schema.users.id, uid));
   if (!u || !u.active) return null;
   const rows = await db.select().from(schema.permissions).where(eq(schema.permissions.userId, uid));
-  const perms = Object.fromEntries(MODULES.map((m) => [m.key, "none"])) as Record<ModuleKey, Level>;
-  for (const r of rows) if (r.module in perms) perms[r.module as ModuleKey] = r.level as Level;
   const role = normalizeRole(u.role);
-  if (role === "admin") for (const m of MODULES) perms[m.key] = "write";
+  // Droits du rôle (Paramètres), remplacés module par module par les droits personnels.
+  const perms = effectivePerms(role, await roleDefaults(), rows);
   return { id: u.id, name: u.name, email: u.email, role, perms };
 }
 

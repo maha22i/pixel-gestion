@@ -7,6 +7,7 @@ import { PageHeader, Stat } from "@/components/ui";
 import { Flash } from "@/components/Flash";
 import { SubmitButton } from "@/components/ConfirmButton";
 import { changeOwnPassword, saveNotifyPrefs } from "../utilisateurs/actions";
+import { NOTIFY_GROUPS } from "@/lib/notifyTypes";
 
 export default async function Profile({ searchParams }: { searchParams: { e?: string; ok?: string } }) {
   const u = await requireUser();
@@ -29,7 +30,7 @@ export default async function Profile({ searchParams }: { searchParams: { e?: st
       <div className="grid lg:grid-cols-2 gap-6 items-start">
         <form action={changeOwnPassword} className="card card-pad space-y-4">
           <p className="h-section">Changer mon mot de passe</p>
-          <Flash message={searchParams.ok ? "Mot de passe mis à jour." : ""} clear={["ok"]} />
+          <Flash message={searchParams.ok === "1" ? "Mot de passe mis à jour." : ""} clear={["ok"]} />
           <Flash
             tone="error"
             clear={["e"]}
@@ -44,10 +45,22 @@ export default async function Profile({ searchParams }: { searchParams: { e?: st
           <div><label className="label">Confirmer</label><input name="confirm" type="password" className="input" minLength={8} required /></div>
           <SubmitButton>Mettre à jour</SubmitButton>
         </form>
-        <form action={saveNotifyPrefs} className="card card-pad space-y-2">
-          <p className="h-section">Emails (si le serveur est configuré)</p>
-          {[["assign", "Assignation"], ["mention", "Mention"], ["comment", "Commentaire"], ["due", "Échéance"], ["review", "Validation"], ["blocked", "Blocage"], ["presence_refuse", "Pointage refusé"], ["presence_telephone", "Nouveau téléphone"], ["presence_absent", "Absence"], ["presence_depart", "Départ oublié"]].map(([k, l]) => (
-            <label key={k} className="flex gap-2 text-sm font-bold"><input type="checkbox" name={`mail_${k}`} defaultChecked={!!prefs[k]} /> {l}</label>
+        <form action={saveNotifyPrefs} className="card card-pad space-y-4">
+          <div>
+            <p className="h-section">Notifications par e-mail</p>
+            <p className="mt-1 text-sm text-navy-600/75">Toutes les alertes restent visibles dans la cloche. Cochez celles à recevoir aussi par e-mail.</p>
+          </div>
+          <Flash message={searchParams.ok === "notif" ? "Préférences enregistrées." : ""} clear={["ok"]} />
+          {NOTIFY_GROUPS.map((g) => (
+            <fieldset key={g.label}>
+              <legend className="mb-1 text-xs font-bold uppercase tracking-wider text-navy-600/70">{g.label}</legend>
+              {g.items.map((i) => (
+                <label key={i.key} className="flex cursor-pointer items-start gap-3 rounded-lg px-2 py-1.5 text-sm hover:bg-navy-50/70">
+                  <input type="checkbox" name={`mail_${i.key}`} defaultChecked={!!prefs[i.key]} className="mt-0.5 h-4 w-4 shrink-0 accent-[#2C3E50]" />
+                  <span className="text-navy-800">{i.label}</span>
+                </label>
+              ))}
+            </fieldset>
           ))}
           <SubmitButton>Enregistrer</SubmitButton>
         </form>

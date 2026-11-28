@@ -1,14 +1,20 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  Briefcase, CheckCircle2, ChevronDown, Clock, FolderKanban, LoaderCircle, LogIn, LogOut, MapPin, PackageOpen,
+  QrCode, ShieldCheck, ShieldAlert, Smartphone, X,
+} from "lucide-react";
 import { GPS_HELP, PRIVATE_HELP, STATUS_LABEL } from "@/lib/attendance/labels";
 import { Flash } from "@/components/Flash";
 import { acceptConsent, punchAction } from "./actions";
 
 type Choice = { id: number; title: string };
-type Row = { id: number; day: string; time: string; kind: string; status: string; place: string };
+type Row = { id: number; iso: string; day: string; time: string; kind: string; status: string; place: string };
+type Mark = { at: string; time: string; status: string; mission: boolean } | null;
 
 const DEVICE_KEY = "pf_device";
+const TZ = "Africa/Djibouti";
 
 function deviceToken() {
   try {
@@ -31,8 +37,16 @@ function secretFrom(text: string) {
   }
 }
 
+const clockNow = () => new Intl.DateTimeFormat("fr-FR", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date());
+const duration = (min: number) => {
+  const m = Math.max(0, Math.round(min));
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")}`;
+};
+const STATUS_BADGE: Record<string, string> = { valide: "badge-green", a_verifier: "badge-gold", mission: "badge-blue", refuse: "badge-red" };
+
 export function PointerApp({
-  consent: initialConsent, step: serverStep, todayLine, week, tasks, projects, slips,
+  consent: initialConsent, step: serverStep, week, tasks, projects, slips,
+  firstName, now: serverNow, todayIso, schedule, arrival, departure,
 }: {
   consent: boolean;
   step: "arrivee" | "depart" | "fini";
@@ -41,6 +55,12 @@ export function PointerApp({
   tasks: Choice[];
   projects: Choice[];
   slips: Choice[];
+  firstName: string;
+  now: string;
+  todayIso: string;
+  schedule: { start: string; end: string; workday: boolean };
+  arrival: Mark;
+  departure: Mark;
 }) {
   const router = useRouter();
   const [consent, setConsent] = useState(initialConsent);
@@ -55,8 +75,17 @@ export function PointerApp({
   const promptRef = useRef<BeforeInstallPromptEvent | null>(null);
   const scannerRef = useRef<{ stop: () => Promise<void> } | null>(null);
   const scanOnce = useRef(false);
+  const [missionOpen, setMissionOpen] = useState(false);
   const [missionKind, setMissionKind] = useState<"task" | "project" | "slip">("task");
   const [missionId, setMissionId] = useState("");
+  const [now, setNow] = useState(serverNow);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const id = window.setInterval(() => { setNow(clockNow()); setTick((t) => t + 1); }, 15000);
+    setNow(clockNow());
+    return () => window.clearInterval(id);
+  }, []);
 
   useEffect(() => {
     const nav = navigator as Navigator & { standalone?: boolean };
@@ -142,7 +171,10 @@ export function PointerApp({
     setResult({ ...res, at: Date.now() });
     if (res.ok && res.firstDevice) setDismissed(false);
     setBusy(false);
-    if (res.ok && res.status !== "refuse") setStep((current) => current === "arrivee" ? "depart" : "fini");
+    if (res.ok && res.status !== "refuse") {
+      setStep((current) => current === "arrivee" ? "depart" : "fini");
+      setMissionOpen(false);
+    }
     if (res.ok) router.refresh();
   }
 
@@ -180,101 +212,246 @@ export function PointerApp({
     }
   }
 
-  const actionLabel = step === "depart" ? "Scanner ma sortie" : "Scanner mon arrivée";
+  function stopScan() {
+    scannerRef.current?.stop().catch(() => {});
+    setScanning(false);
+  }
+
+  // Temps travaillé aujourd'hui (session en cours comprise).
+  const worked = useMemo(() => {
+    if (!arrival) return 0;
+    const end = departure ? Date.parse(departure.at) : Date.now();
+    return (end - Date.parse(arrival.at)) / 60000;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrival, departure, tick]);
+
+  const days = useMemo(() => {
+    const map = new Map<string, Row[]>();
+    for (const r of week) map.set(r.iso, [...(map.get(r.iso) ?? []), r]);
+    return [...map.entries()].map(([iso, rows]) => ({
+      iso,
+      label: new Date(`${iso}T12:00:00+03:00`).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", timeZone: TZ }),
+      rows: rows.slice().sort((a, b) => a.time.localeCompare(b.time)),
+    }));
+  }, [week]);
+
   const choices = missionKind === "task" ? tasks : missionKind === "project" ? projects : slips;
   const showInstall = !standalone && !dismissed;
+  const ready = consent && priv === false;
+  const dateLabel = new Date(`${todayIso}T12:00:00+03:00`).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", timeZone: TZ });
+  const state = step === "arrivee"
+    ? { dot: "bg-white/50", text: "Pas encore pointé" }
+    : step === "depart"
+      ? { dot: "bg-emerald-400 animate-pulse", text: `Au travail depuis ${arrival?.time ?? ""}` }
+      : { dot: "bg-gold", text: "Journée terminée" };
+
+  const timelineItem = (label: string, mark: Mark, icon: React.ReactNode, active: boolean) => (
+    <div className={`flex flex-1 items-center gap-3 rounded-xl px-3 py-2.5 ${mark ? "bg-white/10" : active ? "bg-white/[0.06] ring-1 ring-white/20" : "bg-white/[0.04]"}`}>
+      <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${mark ? "bg-gold text-navy-900" : "bg-white/10 text-white/60"}`}>{icon}</span>
+      <span className="min-w-0">
+        <span className="block text-[11px] font-bold uppercase tracking-wider text-white/55">{label}</span>
+        <span className="block text-lg font-bold tabular-nums leading-tight text-white">{mark ? mark.time : "--:--"}</span>
+        {mark && mark.status !== "valide" && <span className="text-[11px] font-semibold text-gold">{mark.mission ? "Mission · " : ""}{STATUS_LABEL[mark.status] ?? mark.status}</span>}
+      </span>
+    </div>
+  );
 
   return (
-    <div className="mx-auto max-w-lg space-y-4">
-      <div>
-        <p className="text-sm font-bold uppercase tracking-wide text-gold">Pointage</p>
-        <h1 className="text-3xl font-bold text-navy">Pointer</h1>
-        <p className="mt-1 text-lg font-bold text-navy">{todayLine}</p>
-      </div>
+    <div className="mx-auto max-w-xl space-y-4">
+      {/* En-tête : heure, état du jour, arrivée / départ */}
+      <section className="overflow-hidden rounded-2xl bg-navy text-white">
+        <div className="bg-[radial-gradient(circle_at_100%_0%,rgba(245,166,35,0.22),transparent_45%)] px-5 pb-5 pt-5 sm:px-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-sm text-white/60 first-letter:uppercase">{dateLabel}</p>
+              <h1 className="mt-0.5 text-xl font-bold">Bonjour {firstName}</h1>
+              <p className="mt-2 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-sm font-semibold">
+                <span className={`h-2 w-2 rounded-full ${state.dot}`} />
+                {state.text}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-4xl font-bold tabular-nums leading-none tracking-tight sm:text-5xl">{now}</p>
+              <p className="mt-1.5 text-xs text-white/55">{schedule.workday ? `Horaire ${schedule.start} – ${schedule.end}` : "Jour de repos"}</p>
+            </div>
+          </div>
 
-      {priv === null && <p className="card card-pad text-sm font-bold text-navy-600">Vérification du navigateur…</p>}
-      {priv && <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 font-bold text-red-800">{PRIVATE_HELP}</p>}
+          <div className="mt-5 flex gap-2">
+            {timelineItem("Arrivée", arrival, <LogIn size={17} />, step === "arrivee")}
+            {timelineItem("Départ", departure, <LogOut size={17} />, step === "depart")}
+          </div>
+          {arrival && (
+            <p className="mt-3 flex items-center gap-2 text-sm text-white/75">
+              <Clock size={15} className="text-gold" />
+              {step === "fini" ? "Temps de présence" : "Temps de présence en cours"} : <b className="tabular-nums text-white">{duration(worked)}</b>
+            </p>
+          )}
+        </div>
+      </section>
 
+      {/* Navigation privée / vérification */}
+      {priv === null && (
+        <p className="card card-pad flex items-center gap-2 text-sm text-navy-600"><LoaderCircle size={16} className="animate-spin" /> Vérification du navigateur…</p>
+      )}
+      {priv && (
+        <div className="flex gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <ShieldAlert size={20} className="mt-0.5 shrink-0" />
+          <p><b>Navigation privée détectée.</b> {PRIVATE_HELP}</p>
+        </div>
+      )}
+
+      {/* Consentement */}
       {!consent && priv === false && (
-        <form action={acceptConsent} className="card card-pad space-y-3" onSubmit={() => setConsent(true)}>
-          <p className="font-bold text-navy">Avant le premier pointage</p>
-          <p className="text-sm text-navy-700">La position et le réseau sont vérifiés uniquement au moment du pointage, pour confirmer la présence au bureau. Il n'y a pas de suivi en continu.</p>
-          <button className="btn-primary h-12 w-full">J'ai compris</button>
+        <form action={acceptConsent} className="card card-pad space-y-4" onSubmit={() => setConsent(true)}>
+          <div className="flex gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-700"><ShieldCheck size={20} /></span>
+            <div>
+              <p className="font-bold text-navy">Avant votre premier pointage</p>
+              <p className="mt-1 text-sm text-navy-600/85">La position et le réseau sont vérifiés <b>uniquement au moment du pointage</b>, pour confirmer la présence au bureau. Il n'y a aucun suivi en continu.</p>
+            </div>
+          </div>
+          <button className="btn-primary h-12 w-full">J'ai compris, continuer</button>
         </form>
       )}
 
-      {consent && priv === false && (
-        <>
-          {step === "fini" ? (
-            <div className="card card-pad">
-              <p className="text-lg font-bold text-navy">Journée enregistrée</p>
-              <p className="mt-1 text-navy-700">Une arrivée et une sortie, c'est tout pour aujourd'hui.</p>
+      {/* Action principale */}
+      {ready && (
+        step === "fini" ? (
+          <div className="card card-pad flex items-center gap-4">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-emerald-50 text-emerald-600"><CheckCircle2 size={26} /></span>
+            <div>
+              <p className="font-bold text-navy">Journée enregistrée</p>
+              <p className="text-sm text-navy-600/80">Arrivée à {arrival?.time} et départ à {departure?.time}. À demain !</p>
             </div>
-          ) : (
-            <>
-              <button className="btn-gold h-24 w-full text-xl" disabled={busy || scanning} onClick={() => scan()}>
-                {busy ? "Enregistrement…" : scanning ? "Scan en cours…" : actionLabel}
-              </button>
-              {scanning && (
-                <div className="card overflow-hidden p-3">
+          </div>
+        ) : (
+          <section className="card overflow-hidden">
+            {scanning ? (
+              <div className="p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="font-bold text-navy">Visez le QR code du bureau</p>
+                  <button type="button" onClick={stopScan} className="grid h-9 w-9 place-items-center rounded-lg text-navy-600 hover:bg-navy-50" aria-label="Annuler le scan"><X size={18} /></button>
+                </div>
+                <div className="relative overflow-hidden rounded-xl bg-navy-900">
                   <div id="qr-reader" className="overflow-hidden rounded-xl" />
-                  <button className="btn-ghost mt-3 w-full" onClick={() => { scannerRef.current?.stop().catch(() => {}); setScanning(false); }}>Annuler</button>
                 </div>
-              )}
-              <details className="card card-pad">
-                <summary className="cursor-pointer font-bold text-navy">{step === "depart" ? "Sortie en mission" : "Arrivée en mission"}</summary>
-                <div className="mt-4 space-y-3">
-                  <p className="text-sm text-navy-600">Hors bureau : la position est enregistrée, sans QR. Le manager valide ensuite.</p>
-                  <select className="input" value={missionKind} onChange={(e) => { setMissionKind(e.target.value as "task" | "project" | "slip"); setMissionId(""); }}>
-                    <option value="task">Une tâche</option>
-                    <option value="project">Un projet</option>
-                    <option value="slip">Un bon de sortie</option>
-                  </select>
-                  <select className="input" value={missionId} onChange={(e) => setMissionId(e.target.value)}>
-                    <option value="">Choisir</option>
-                    {choices.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
-                  </select>
-                  <button className="btn-primary h-12 w-full" disabled={busy || !missionId} onClick={() => submit("mission")}>
-                    {step === "depart" ? "Enregistrer la sortie en mission" : "Enregistrer l'arrivée en mission"}
-                  </button>
-                </div>
-              </details>
-            </>
-          )}
-          {result && (
-            <Flash
-              key={result.at}
-              className="mb-0"
-              tone={result.ok && result.status !== "refuse" ? "success" : "error"}
-              message={result.ok && result.status ? `${result.message} ${STATUS_LABEL[result.status] ?? result.status}.` : result.message}
-            />
-          )}
-        </>
+                <p className="mt-3 text-center text-xs text-navy-600/70">Le pointage est enregistré dès que le code est lu.</p>
+              </div>
+            ) : (
+              <div className="p-5 sm:p-6">
+                <button
+                  type="button"
+                  className="btn-primary h-16 w-full gap-3 text-[17px]"
+                  disabled={busy}
+                  onClick={() => scan()}
+                >
+                  {busy ? <LoaderCircle size={22} className="animate-spin" /> : <QrCode size={22} />}
+                  {busy ? "Enregistrement…" : step === "depart" ? "Scanner pour partir" : "Scanner pour arriver"}
+                </button>
+                <p className="mt-3 text-center text-sm text-navy-600/75">Scannez le QR code affiché au bureau.</p>
+              </div>
+            )}
+
+            {!scanning && (
+              <div className="border-t border-navy-100">
+                <button
+                  type="button"
+                  onClick={() => setMissionOpen((o) => !o)}
+                  aria-expanded={missionOpen}
+                  className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-navy-50/60 sm:px-6"
+                >
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-sky-50 text-sky-700"><MapPin size={17} /></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-bold text-navy">Je suis en mission</span>
+                    <span className="block text-xs text-navy-600/70">Hors du bureau : position enregistrée, validée ensuite par le manager.</span>
+                  </span>
+                  <ChevronDown size={18} className={`shrink-0 text-navy-600/50 transition ${missionOpen ? "rotate-180" : ""}`} />
+                </button>
+                {missionOpen && (
+                  <div className="space-y-3 px-5 pb-5 sm:px-6">
+                    <div className="grid grid-cols-3 gap-1 rounded-xl bg-navy-50 p-1" role="radiogroup" aria-label="Type de mission">
+                      {([["task", "Tâche", Briefcase], ["project", "Projet", FolderKanban], ["slip", "Matériel", PackageOpen]] as const).map(([key, label, Icon]) => (
+                        <button
+                          key={key}
+                          type="button"
+                          role="radio"
+                          aria-checked={missionKind === key}
+                          title={key === "slip" ? "Bon de sortie de matériel" : undefined}
+                          onClick={() => { setMissionKind(key); setMissionId(""); }}
+                          className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[13px] font-semibold transition ${missionKind === key ? "bg-white text-navy ring-1 ring-navy-100" : "text-navy-600/75 hover:text-navy"}`}
+                        >
+                          <Icon size={15} /> {label}
+                        </button>
+                      ))}
+                    </div>
+                    <select className="input" value={missionId} onChange={(e) => setMissionId(e.target.value)} aria-label="Mission">
+                      <option value="">{choices.length ? "Choisir…" : "Aucun élément disponible"}</option>
+                      {choices.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
+                    </select>
+                    <button type="button" className="btn-gold h-11 w-full" disabled={busy || !missionId} onClick={() => submit("mission")}>
+                      {busy ? <LoaderCircle size={18} className="animate-spin" /> : <MapPin size={17} />}
+                      {step === "depart" ? "Enregistrer mon départ en mission" : "Enregistrer mon arrivée en mission"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        )
       )}
 
+      {ready && result && (
+        <Flash
+          key={result.at}
+          className="mb-0"
+          tone={result.ok && result.status !== "refuse" ? "success" : "error"}
+          message={result.ok && result.status ? `${result.message} ${STATUS_LABEL[result.status] ?? result.status}.` : result.message}
+        />
+      )}
+
+      {/* Installation sur l'écran d'accueil */}
       {showInstall && (
-        <section className="card card-pad space-y-3">
-          <p className="font-bold text-navy">Ajoute l'application à l'écran d'accueil</p>
-          <p className="text-sm text-navy-700">L'icône Pixel Nomade ouvre directement le pointage. Le téléphone reste reconnu, même si les données d'un autre navigateur sont effacées.</p>
-          <p className="text-sm text-navy-700">Sur iPhone : bouton Partager, puis « Sur l'écran d'accueil ». Pointe ensuite depuis cette icône. L'appareil photo du téléphone ouvre Safari, qui compte comme un autre appareil.</p>
-          {install && (
-            <button className="btn-primary w-full" onClick={async () => {
-              await promptRef.current?.prompt();
-              setInstall(false);
-            }}>Ajouter à l'écran d'accueil</button>
-          )}
-          <button className="btn-ghost w-full" onClick={() => { localStorage.setItem("pf_install_dismissed", "1"); setDismissed(true); }}>Plus tard</button>
+        <section className="card card-pad">
+          <div className="flex gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gold-50 text-gold-600"><Smartphone size={20} /></span>
+            <div className="min-w-0">
+              <p className="font-bold text-navy">Ajoutez Pixel Nomade à l'écran d'accueil</p>
+              <p className="mt-1 text-sm text-navy-600/85">L'icône ouvre directement le pointage et votre téléphone reste reconnu.</p>
+              <p className="mt-1 text-sm text-navy-600/85">Sur iPhone : <b>Partager</b> puis <b>« Sur l'écran d'accueil »</b>. Pointez ensuite depuis cette icône (l'appareil photo ouvre Safari, compté comme un autre appareil).</p>
+            </div>
+          </div>
+          <div className="mt-4 flex gap-2">
+            {install && (
+              <button className="btn-primary flex-1" onClick={async () => {
+                await promptRef.current?.prompt();
+                setInstall(false);
+              }}>Ajouter</button>
+            )}
+            <button className="btn-ghost flex-1" onClick={() => { localStorage.setItem("pf_install_dismissed", "1"); setDismissed(true); }}>Plus tard</button>
+          </div>
         </section>
       )}
 
+      {/* Historique de la semaine */}
       <section className="card">
-        <p className="h-section px-5 pt-5">Cette semaine</p>
-        {week.length === 0 ? <p className="px-5 py-6 text-sm text-navy-600">Aucun pointage.</p> : (
-          <ul className="divide-y divide-navy/5">
-            {week.map((row) => (
-              <li key={row.id} className="px-5 py-3">
-                <p className="font-bold text-navy">{row.day} · {row.time} · {row.kind === "depart" ? "Départ" : "Arrivée"}</p>
-                <p className="text-sm text-navy-600">{row.place} · {STATUS_LABEL[row.status] ?? row.status}</p>
+        <h2 className="h-section px-5 pb-1 pt-5 sm:px-6">Mes 7 derniers jours</h2>
+        {days.length === 0 ? <p className="px-5 pb-6 pt-2 text-sm text-navy-600/70 sm:px-6">Aucun pointage pour l'instant.</p> : (
+          <ul className="divide-y divide-navy-100">
+            {days.map((d) => (
+              <li key={d.iso} className="px-5 py-3 sm:px-6">
+                <p className="mb-1.5 text-sm font-bold text-navy first-letter:uppercase">{d.iso === todayIso ? "Aujourd'hui" : d.label}</p>
+                <ul className="space-y-1.5">
+                  {d.rows.map((r) => (
+                    <li key={r.id} className="flex items-center gap-3 text-sm">
+                      <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-md ${r.kind === "depart" ? "bg-navy-50 text-navy-700" : "bg-emerald-50 text-emerald-700"}`}>
+                        {r.kind === "depart" ? <LogOut size={14} /> : <LogIn size={14} />}
+                      </span>
+                      <span className="w-12 font-bold tabular-nums text-navy">{r.time}</span>
+                      <span className="min-w-0 flex-1 truncate text-navy-600/80">{r.kind === "depart" ? "Départ" : "Arrivée"} · {r.place}</span>
+                      <span className={STATUS_BADGE[r.status] ?? "badge-gray"}>{STATUS_LABEL[r.status] ?? r.status}</span>
+                    </li>
+                  ))}
+                </ul>
               </li>
             ))}
           </ul>

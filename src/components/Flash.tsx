@@ -92,14 +92,9 @@ export function Flash({
   const clearKey = clear?.filter(Boolean).join(",") ?? "";
   const seed = useRef<{ text: string; tone: Tone; life: number } | null>(null);
   if (!seed.current) {
-    const saved = !incoming && clearKey && typeof window !== "undefined"
-      ? readSaved().find((item) => item.path === pathname && item.clear === clearKey)
-      : undefined;
-    seed.current = {
-      text: incoming || saved?.text || "",
-      tone: incoming ? tone : (saved?.tone ?? tone),
-      life: saved ? Math.max(250, saved.until - Date.now()) : DELAY[tone],
-    };
+    // Le premier rendu doit être identique au rendu serveur : un message mémorisé
+    // (après un rechargement) n'est restauré qu'une fois la page affichée, plus bas.
+    seed.current = { text: incoming, tone, life: DELAY[tone] };
   }
   const [text, setText] = useState(seed.current.text);
   const [shownTone, setShownTone] = useState<Tone>(seed.current.tone);
@@ -108,6 +103,19 @@ export function Flash({
   const [life, setLife] = useState(seed.current.life);
   const left = useRef(seed.current.life);
   const armed = useRef("");
+
+  useEffect(() => {
+    if (incoming || !clearKey) return;
+    const saved = readSaved().find((item) => item.path === pathname && item.clear === clearKey);
+    if (!saved) return;
+    left.current = Math.max(250, saved.until - Date.now());
+    setText(saved.text);
+    setShownTone(saved.tone);
+    setLife(left.current);
+    setOpen(true);
+    // Restauration unique au montage.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!incoming) {
@@ -149,7 +157,7 @@ export function Flash({
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
       onBlur={() => setPaused(false)}
-      className={`${className} relative overflow-hidden rounded-xl border px-4 py-2.5 text-sm font-semibold shadow-sm ${STYLE[shownTone]}`}
+      className={`${className} relative overflow-hidden rounded-xl border px-4 py-2.5 text-sm font-semibold  ${STYLE[shownTone]}`}
     >
       <div className="flex items-start gap-3">
         <p className="min-w-0 flex-1 leading-snug">{text}</p>

@@ -22,7 +22,7 @@ const pill =
   "hover:border-navy-300 hover:bg-navy-50 peer-checked:border-navy peer-checked:bg-navy peer-checked:text-white " +
   "peer-focus-visible:ring-2 peer-focus-visible:ring-gold/60 peer-focus-visible:ring-offset-1";
 
-/** Formulaire d'ajout / de modification d'une dépense, affiché en panneau au-dessus de la liste. */
+/** Formulaire d'ajout / de modification d'une dépense, affiché dans une fenêtre modale. */
 export function ExpenseForm({
   action, editing, projects, suppliers, defaultProject, closeHref,
 }: {
@@ -36,14 +36,9 @@ export function ExpenseForm({
   const category = editing?.category ?? "materiel";
   const method = editing?.method ?? "especes";
   return (
-    <form
-      id="saisie"
-      action={action}
-      encType="multipart/form-data"
-      className="card scroll-mt-6 overflow-hidden ring-2 ring-gold/40"
-    >
-      <div className="flex items-center justify-between gap-3 border-b border-navy-50 px-5 py-4 sm:px-6">
-        <h2 className="text-lg font-bold text-navy">{editing ? "Modifier la dépense" : "Nouvelle dépense"}</h2>
+    <form action={action}>
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-navy-100 bg-white px-5 py-4 sm:px-6">
+        <h2 id="exp-title" className="text-lg font-bold text-navy">{editing ? "Modifier la dépense" : "Nouvelle dépense"}</h2>
         <Link href={closeHref} scroll={false} className="grid h-9 w-9 place-items-center rounded-lg text-navy-600 transition hover:bg-navy-50 hover:text-navy" aria-label="Fermer le formulaire" title="Fermer">
           <X size={18} />
         </Link>
@@ -153,9 +148,9 @@ export function ExpenseForm({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-t border-navy-50 bg-navy-50/40 px-5 py-4 sm:px-6">
-        <SubmitButton>{editing ? "Enregistrer les modifications" : "Ajouter la dépense"}</SubmitButton>
+      <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-end gap-2 border-t border-navy-100 bg-[#f7f8fa] px-5 py-4 sm:px-6">
         <Link href={closeHref} scroll={false} className="btn-ghost">Annuler</Link>
+        <SubmitButton>{editing ? "Enregistrer les modifications" : "Ajouter la dépense"}</SubmitButton>
       </div>
     </form>
   );

@@ -1,14 +1,12 @@
 import Link from "next/link";
 import { asc, sql } from "drizzle-orm";
-import { ArrowDown, ArrowUp, FolderTree, MapPin, Pencil, Plus, Trash2 } from "lucide-react";
+import { FolderTree, MapPin, Plus } from "lucide-react";
 import { db, schema } from "@/db";
 import { can, requirePerm } from "@/lib/auth";
 import { AVAILABILITY, CONDITIONS, seesPrices } from "@/lib/equipment";
 import { addDays, fdj, today } from "@/lib/format";
-import { Empty, Field, PageHeader, Stat } from "@/components/ui";
-import { Flash } from "@/components/Flash";
-import { ConfirmButton } from "@/components/ConfirmButton";
-import { createCategory, createLocation, deleteCategory, deleteLocation, moveCategory, renameCategory, renameLocation } from "./actions";
+import { Empty, PageHeader, Stat } from "@/components/ui";
+import { CategoriesModal, LocationsModal } from "./ManageModals";
 
 export default async function MaterielPage({ searchParams }: { searchParams: Record<string, string | undefined> }) {
   const user = await requirePerm("materiel");
@@ -62,6 +60,13 @@ export default async function MaterielPage({ searchParams }: { searchParams: Rec
   const categories = await db.select().from(schema.equipmentCategories).orderBy(asc(schema.equipmentCategories.position), asc(schema.equipmentCategories.id));
   const locations = await db.select().from(schema.equipmentLocations).orderBy(asc(schema.equipmentLocations.position));
   const roots = categories.filter((c) => !c.parentId);
+  const usage = (await db.execute(sql`SELECT category_id, location_id, COUNT(*)::int AS n FROM equipment GROUP BY 1, 2`)).rows as { category_id: number | null; location_id: number | null; n: number }[];
+  const catCounts = new Map<number, number>();
+  const locCounts = new Map<number, number>();
+  for (const u of usage) {
+    if (u.category_id) catCounts.set(u.category_id, (catCounts.get(u.category_id) ?? 0) + u.n);
+    if (u.location_id) locCounts.set(u.location_id, (locCounts.get(u.location_id) ?? 0) + u.n);
+  }
   const label = (id: number | null) => {
     const c = categories.find((x) => x.id === id);
     if (!c) return "Sans catégorie";
@@ -116,11 +121,12 @@ export default async function MaterielPage({ searchParams }: { searchParams: Rec
             <Link className="btn-ghost" href="/materiel/sorties">Sorties de matériel</Link>
             <a className="btn-ghost" href="/api/pdf/materiel">Export PDF</a>
             <a className="btn-ghost" href="/api/materiel/export">Export Excel</a>
-            {write && <Link className="btn-gold" href="/materiel/nouveau">Ajouter</Link>}
+            {write && <Link className="btn-ghost" href="/materiel?gerer=categories" scroll={false}><FolderTree size={16} /> Catégories</Link>}
+            {write && <Link className="btn-ghost" href="/materiel?gerer=emplacements" scroll={false}><MapPin size={16} /> Emplacements</Link>}
+            {write && <Link className="btn-gold" href="/materiel/nouveau"><Plus size={16} /> Ajouter</Link>}
           </>
         }
       />
-      <Flash tone="error" clear={["err"]} message={searchParams.err === "cat" ? "Cette catégorie contient du matériel ou une sous-catégorie. Déplacez-les avant de la supprimer." : ""} />
       <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Stat label="Équipements" value={st.n} />
         {prices && <Stat label="Valeur d'achat" value={fdj(st.valeur)} tone="gold" />}
@@ -168,97 +174,11 @@ export default async function MaterielPage({ searchParams }: { searchParams: Rec
           : table(rows)}
       </div>
 
-      {write && (
-        <div className="mt-8 grid gap-6 lg:grid-cols-2">
-          <section className="card card-pad">
-            <div className="mb-4 flex items-center gap-2">
-              <span className="grid h-8 w-8 place-items-center rounded-lg bg-gold/15 text-gold-700"><FolderTree size={16} /></span>
-              <div>
-                <p className="h-section">Catégories</p>
-                <p className="text-xs text-navy-600/70">Organise les familles et sous-familles de matériel.</p>
-              </div>
-            </div>
-            <ul className="space-y-3">
-              {roots.map((c) => (
-                <li key={c.id} className="rounded-xl border border-navy-100/80 bg-navy-50/35 p-2.5">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <form action={renameCategory} className="flex min-w-0 flex-1 gap-1.5">
-                      <input type="hidden" name="id" value={c.id} />
-                      <input name="name" defaultValue={c.name} className="input h-9 min-w-[160px] sm:min-w-[220px]" />
-                      <button className="btn-ghost btn-sm"><Pencil size={13} /> Renommer</button>
-                    </form>
-                    <form action={moveCategory.bind(null, c.id, -1)}><button className="btn-ghost btn-sm px-2.5" title="Monter"><ArrowUp size={13} /></button></form>
-                    <form action={moveCategory.bind(null, c.id, 1)}><button className="btn-ghost btn-sm px-2.5" title="Descendre"><ArrowDown size={13} /></button></form>
-                    <form action={deleteCategory.bind(null, c.id)}>
-                      <ConfirmButton className="btn-danger btn-sm px-2.5" message="Supprimer cette catégorie ?"><Trash2 size={13} /></ConfirmButton>
-                    </form>
-                  </div>
-                  <ul className="ml-4 mt-2.5 space-y-2 border-l border-navy-200/70 pl-3">
-                    {categories.filter((s) => s.parentId === c.id).map((s) => (
-                      <li key={s.id} className="rounded-lg bg-white/75 p-1.5">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                        <form action={renameCategory} className="flex min-w-0 flex-1 gap-1.5">
-                          <input type="hidden" name="id" value={s.id} />
-                          <input name="name" defaultValue={s.name} className="input h-9 min-w-[150px] sm:min-w-[190px]" />
-                          <button className="btn-ghost btn-sm"><Pencil size={13} /> Renommer</button>
-                        </form>
-                        <form action={moveCategory.bind(null, s.id, -1)}><button className="btn-ghost btn-sm px-2.5" title="Monter"><ArrowUp size={13} /></button></form>
-                        <form action={moveCategory.bind(null, s.id, 1)}><button className="btn-ghost btn-sm px-2.5" title="Descendre"><ArrowDown size={13} /></button></form>
-                        <form action={deleteCategory.bind(null, s.id)}>
-                          <ConfirmButton className="btn-danger btn-sm px-2.5" message="Supprimer cette sous-catégorie ?"><Trash2 size={13} /></ConfirmButton>
-                        </form>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </li>
-              ))}
-            </ul>
-            <form action={createCategory} className="mt-4 rounded-xl border border-dashed border-navy-200 bg-white/70 p-3">
-              <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-navy-600/70">Nouvelle catégorie</p>
-              <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-              <Field label="Nom"><input name="name" className="input" required /></Field>
-              <Field label="Sous-catégorie de">
-                <select name="parentId" className="input" defaultValue="">
-                  <option value="">— catégorie principale —</option>
-                  {roots.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </Field>
-              <button className="btn-navy self-end"><Plus size={14} /> Créer</button>
-              </div>
-            </form>
-          </section>
-          <section className="card card-pad">
-            <div className="mb-4 flex items-center gap-2">
-              <span className="grid h-8 w-8 place-items-center rounded-lg bg-navy-100/70 text-navy"><MapPin size={16} /></span>
-              <div>
-                <p className="h-section">Emplacements</p>
-                <p className="text-xs text-navy-600/70">Liste des lieux de stockage et d'utilisation.</p>
-              </div>
-            </div>
-            <ul className="space-y-2.5">
-              {locations.map((l) => (
-                <li key={l.id} className="rounded-xl border border-navy-100/80 bg-navy-50/35 p-2">
-                  <form action={renameLocation} className="flex flex-wrap items-center gap-1.5">
-                    <input type="hidden" name="id" value={l.id} />
-                    <input name="name" defaultValue={l.name} className="input h-9 min-w-[200px] sm:min-w-[260px]" />
-                    <button className="btn-ghost btn-sm"><Pencil size={13} /> Renommer</button>
-                  </form>
-                  <form action={deleteLocation.bind(null, l.id)} className="mt-1 sm:mt-0">
-                    <ConfirmButton className="btn-danger btn-sm" message="Supprimer cet emplacement ?"><Trash2 size={13} /> Supprimer</ConfirmButton>
-                  </form>
-                </li>
-              ))}
-            </ul>
-            <form action={createLocation} className="mt-4 rounded-xl border border-dashed border-navy-200 bg-white/70 p-3">
-              <p className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-navy-600/70">Nouvel emplacement</p>
-              <div className="flex flex-wrap gap-2">
-                <input name="name" className="input min-w-[220px] flex-1" placeholder="Nouvel emplacement" required />
-                <button className="btn-navy"><Plus size={14} /> Ajouter</button>
-              </div>
-            </form>
-          </section>
-        </div>
+      {write && searchParams.gerer === "categories" && (
+        <CategoriesModal categories={categories} counts={catCounts} edit={Number(searchParams.edit) || 0} ok={searchParams.ok} err={searchParams.err} />
+      )}
+      {write && searchParams.gerer === "emplacements" && (
+        <LocationsModal locations={locations} counts={locCounts} edit={Number(searchParams.edit) || 0} ok={searchParams.ok} err={searchParams.err} />
       )}
     </>
   );

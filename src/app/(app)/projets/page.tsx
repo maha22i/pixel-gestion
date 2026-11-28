@@ -119,7 +119,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: SP 
 
           <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             <Stat label="Projets actifs" value={active.length} hint={`${statusCount("en_cours")} en cours · ${statusCount("confirme")} confirmé${statusCount("confirme") > 1 ? "s" : ""} · ${prospects} prospect${prospects > 1 ? "s" : ""}`} icon={<FolderKanban size={18} />} tone="blue" />
-            <Link href={link({ late: lateList.length ? "1" : "", status: "" })} className="block rounded-2xl transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold">
+            <Link href={link({ late: lateList.length ? "1" : "", status: "" })} className="block rounded-2xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold">
               <Stat label="En retard" value={lateList.length} hint={lateTasks ? `${lateTasks} tâche${lateTasks > 1 ? "s" : ""} en retard au total` : "Aucune tâche en retard"} icon={<TriangleAlert size={18} />} tone={lateList.length || lateTasks ? "red" : "green"} />
             </Link>
             {finance ? (
@@ -161,7 +161,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: SP 
                   {([["", "Liste", LayoutList], ["statut", "Par statut", Columns3]] as const).map(([k, v, Icon]) => (
                     <label key={k} className="cursor-pointer" title={v}>
                       <input type="radio" name="vue" value={k} defaultChecked={(board ? "statut" : "") === k} className="peer sr-only" />
-                      <span className="flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-1.5 text-[13px] font-bold text-navy-600/75 transition peer-checked:bg-white peer-checked:text-navy peer-checked:shadow-sm peer-focus-visible:ring-2 peer-focus-visible:ring-gold">
+                      <span className="flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-1.5 text-[13px] font-bold text-navy-600/75 transition peer-checked:bg-white peer-checked:text-navy peer-checked:ring-1 peer-checked:ring-navy-100 peer-focus-visible:ring-2 peer-focus-visible:ring-gold">
                         <Icon size={15} aria-hidden className="shrink-0" /> {v}
                       </span>
                     </label>
@@ -275,7 +275,7 @@ function Board({ rows, day, finance }: { rows: (Row & { late: boolean })[]; day:
               <div className="space-y-2.5">
                 {list.length === 0 && <p className="rounded-xl border border-dashed border-navy-200 px-3 py-6 text-center text-xs text-navy-600/50">Aucun projet</p>}
                 {list.map((p) => (
-                  <article key={p.id} className={`group relative rounded-xl border bg-white p-3.5 shadow-[0_10px_24px_-20px_rgba(24,34,44,0.6)] transition hover:-translate-y-0.5 hover:border-gold/60 ${p.late ? "border-red-200" : "border-white"}`}>
+                  <article key={p.id} className={`group relative rounded-xl border bg-white p-3.5  transition hover:border-gold/60 ${p.late ? "border-red-200" : "border-white"}`}>
                     <div className="flex items-start justify-between gap-2">
                       <Link href={`/projets/${p.id}`} className="font-bold leading-snug text-navy after:absolute after:inset-0 after:rounded-xl group-hover:text-navy-800">{p.title}</Link>
                       {p.owner_name && <Avatar name={p.owner_name} color={p.owner_color} size={26} />}

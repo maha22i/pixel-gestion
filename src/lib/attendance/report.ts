@@ -48,39 +48,46 @@ export async function teamMonth(month: string) {
   return reports;
 }
 
-export async function todayBoard() {
+/** Présence de toute l'équipe pour un jour donné (aujourd'hui par défaut). */
+export async function dayBoard(day?: string) {
   const today = djiboutiClock().day;
+  const target = day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : today;
   const people = await activeUsers();
   const ids = people.map((p) => p.id);
   const punches = ids.length
-    ? await db.select().from(schema.attendancePunches).where(and(eq(schema.attendancePunches.day, today), inArray(schema.attendancePunches.userId, ids))).orderBy(asc(schema.attendancePunches.punchedAt))
+    ? await db.select().from(schema.attendancePunches).where(and(eq(schema.attendancePunches.day, target), inArray(schema.attendancePunches.userId, ids))).orderBy(asc(schema.attendancePunches.punchedAt))
     : [];
-  const [holiday] = await db.select().from(schema.attendanceHolidays).where(eq(schema.attendanceHolidays.day, today));
+  const [holiday] = await db.select().from(schema.attendanceHolidays).where(eq(schema.attendanceHolidays.day, target));
   const absences = await db.select().from(schema.attendanceAbsences)
-    .where(and(lte(schema.attendanceAbsences.startDate, today), gte(schema.attendanceAbsences.endDate, today)));
+    .where(and(lte(schema.attendanceAbsences.startDate, target), gte(schema.attendanceAbsences.endDate, target)));
   const schedule = await getSchedule();
   return {
-    today,
+    today: target,
+    realToday: today,
     holiday: holiday?.name ?? null,
     rows: people.map((person) => {
       const mine = punches.filter((p) => p.userId === person.id);
       const built = monthRows({
-        month: today.slice(0, 7),
+        month: target.slice(0, 7),
         today,
         schedule,
-        holidays: new Map(holiday ? [[today, holiday.name]] : []),
+        holidays: new Map(holiday ? [[target, holiday.name]] : []),
         absences: absences.filter((a) => a.userId === person.id).map((a) => ({ startDate: a.startDate, endDate: a.endDate, kind: a.kind, reason: a.reason })),
-        punchesByDay: new Map([[today, mine.map((p) => ({
+        punchesByDay: new Map([[target, mine.map((p) => ({
           kind: p.kind === "depart" ? "depart" as const : "arrivee" as const,
           at: p.punchedAt.toISOString(),
           channel: p.channel === "mission" ? "mission" as const : "bureau" as const,
           status: p.status,
           reasons: p.reasonCodes,
         }))]]),
-      }).rows.find((row) => row.day === today);
+      }).rows.find((row) => row.day === target);
       return { person, row: built!, punches: mine };
     }),
   };
+}
+
+export async function todayBoard() {
+  return dayBoard();
 }
 
 export async function reviewQueue() {

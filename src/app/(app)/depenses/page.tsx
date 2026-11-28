@@ -12,6 +12,7 @@ import { Flash } from "@/components/Flash";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { Breakdown, Delta, MonthNav, href, inMonth, monthLabel, parseMonth, shiftMonth } from "./finance-ui";
 import { ExpenseForm } from "./ExpenseForm";
+import { Modal } from "@/components/Modal";
 import { CAT_COLOR } from "./colors";
 
 const PATH = "/depenses";
@@ -39,7 +40,7 @@ async function saveExpense(fd: FormData) {
   const month = v.date.slice(0, 7);
   const file = fileFrom(fd);
   const saved = file ? await storeProof(file) : null;
-  if (saved && !saved.ok) redirect(href(PATH, { m: month, edit: id, nouveau: id ? null : 1, e: saved.code }) + "#saisie");
+  if (saved && !saved.ok) redirect(href(PATH, { m: month, edit: id, nouveau: id ? null : 1, e: saved.code }));
   const current = id ? (await db.select().from(schema.expenses).where(eq(schema.expenses.id, id)))[0] : undefined;
   const drop = !saved && current?.proofStored && fd.get("dropProof") ? { proofFilename: null, proofStored: null, proofMime: null, proofSize: null } : null;
   if (id) await db.update(schema.expenses).set({ ...v, ...(saved?.ok ? saved.proof : drop ?? {}) }).where(eq(schema.expenses.id, id));
@@ -125,7 +126,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Sea
       )}
       {write && (
         <>
-          <Link href={href(PATH, { ...keep, edit: r.id }) + "#saisie"} className="btn-ghost btn-sm w-8 px-0" title="Modifier" aria-label={`Modifier « ${r.description} »`}>
+          <Link href={href(PATH, { ...keep, edit: r.id })} scroll={false} className="btn-ghost btn-sm w-8 px-0" title="Modifier" aria-label={`Modifier « ${r.description} »`}>
             <Pencil size={14} />
           </Link>
           <form action={removeExpense.bind(null, r.id, month, cat)} title="Supprimer">
@@ -143,15 +144,15 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Sea
       <PageHeader
         title="Dépenses"
         subtitle="Charges de l'agence, rattachables à un projet pour calculer sa marge."
-        actions={write && !formOpen ? (
-          <Link href={href(PATH, { ...keep, nouveau: 1 }) + "#saisie"} className="btn-gold"><Plus size={16} aria-hidden /> Nouvelle dépense</Link>
+        actions={write ? (
+          <Link href={href(PATH, { ...keep, nouveau: 1 })} scroll={false} className="btn-gold"><Plus size={16} aria-hidden /> Nouvelle dépense</Link>
         ) : undefined}
       />
       <Flash message={OK[searchParams.ok ?? ""] ?? ""} clear={["ok"]} />
       <Flash tone="error" message={searchParams.e === "taille" ? "Le fichier dépasse 15 Mo." : searchParams.e === "type" ? "Le justificatif doit être un PDF ou une photo." : searchParams.e ? "Le justificatif n'a pas pu être enregistré." : ""} clear={["e"]} />
 
-      <div className="space-y-5">
-        {formOpen && (
+      {formOpen && (
+        <Modal closeHref={here} labelledBy="exp-title" width="max-w-4xl">
           <ExpenseForm
             key={editing?.id ?? "new"}
             action={saveExpense}
@@ -161,7 +162,10 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Sea
             defaultProject={defaultProject}
             closeHref={here}
           />
-        )}
+        </Modal>
+      )}
+
+      <div className="space-y-5">
 
         <MonthNav path={PATH} month={month} keep={{ cat }} />
 
@@ -214,7 +218,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Sea
           {n === 0 ? (
             <Empty title={cat ? `Aucune dépense « ${catLabel} » ${inMonth(month)}` : `Aucune dépense ${inMonth(month)}`}>
               <div className="mt-3 flex flex-wrap justify-center gap-2">
-                {write && !formOpen && <Link href={href(PATH, { ...keep, nouveau: 1 }) + "#saisie"} className="btn-gold btn-sm"><Plus size={14} aria-hidden /> Ajouter une dépense</Link>}
+                {write && <Link href={href(PATH, { ...keep, nouveau: 1 })} scroll={false} className="btn-gold btn-sm"><Plus size={14} aria-hidden /> Ajouter une dépense</Link>}
                 {cat && <Link href={href(PATH, { m: month })} className="btn-ghost btn-sm">Toutes les catégories</Link>}
                 {!all && prev && prev.n > 0 && <Link href={href(PATH, { ...keep, m: prevMonth })} className="btn-ghost btn-sm">Voir {monthLabel(prevMonth)} ({prev.n})</Link>}
               </div>

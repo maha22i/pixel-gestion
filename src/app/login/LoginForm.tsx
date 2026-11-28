@@ -44,7 +44,7 @@ export function LoginForm({ error, next }: { error?: string; next: string }) {
   return (
     <form
       action={loginAction}
-      className="login-rise relative overflow-hidden rounded-3xl border border-white/80 bg-white p-7 shadow-[0_30px_70px_-35px_rgba(24,34,44,0.55)] ring-1 ring-navy-100/70 sm:p-9"
+      className="login-rise relative overflow-hidden rounded-3xl border border-white/80 bg-white p-7 ring-1 ring-navy-100/70 sm:p-9"
       onSubmit={(event) => {
         const input = event.currentTarget.elements.namedItem("deviceToken");
         if (input instanceof HTMLInputElement) input.value = deviceToken();

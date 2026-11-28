@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { requirePerm } from "@/lib/auth";
-import { ensureAttendanceAlerts } from "@/lib/attendance/alerts";
+import { ensureAttendanceAlerts, getSchedule } from "@/lib/attendance/alerts";
 import { dayStep } from "@/lib/attendance/dayStep";
 import { formatDjiboutiDate, formatDjiboutiTime, addIsoDays, djiboutiClock } from "@/lib/attendance/time";
 import { PointerApp } from "./PointerApp";
@@ -20,6 +20,7 @@ export default async function PointerPage() {
   const step = dayStep(todayRows);
   const arrival = todayRows.find((p) => p.kind === "arrivee");
   const departure = [...todayRows].reverse().find((p) => p.kind === "depart");
+  const schedule = await getSchedule();
   const todayLine = step === "arrivee" || !arrival
     ? "Pas encore pointé aujourd'hui"
     : step === "depart"
@@ -45,11 +46,18 @@ export default async function PointerPage() {
       consent={!!me?.consent}
       step={step}
       todayLine={todayLine}
+      firstName={user.name.split(" ")[0]}
+      now={clock.time}
+      todayIso={clock.day}
+      schedule={{ start: schedule.startTime, end: schedule.endTime, workday: schedule.workDays.includes(new Date(`${clock.day}T12:00:00+03:00`).getUTCDay()) }}
+      arrival={arrival ? { at: arrival.punchedAt.toISOString(), time: formatDjiboutiTime(arrival.punchedAt), status: arrival.status, mission: arrival.channel === "mission" } : null}
+      departure={step === "fini" && departure ? { at: departure.punchedAt.toISOString(), time: formatDjiboutiTime(departure.punchedAt), status: departure.status, mission: departure.channel === "mission" } : null}
       tasks={tasks.map((t) => ({ id: t.id, title: t.title }))}
       projects={projects.map((p) => ({ id: p.id, title: p.title }))}
       slips={slips.map((s) => ({ id: s.id, title: s.number }))}
       week={punches.map((p) => ({
         id: p.id,
+        iso: String(p.day).slice(0, 10),
         day: formatDjiboutiDate(String(p.day)),
         time: formatDjiboutiTime(p.punchedAt),
         kind: p.kind,

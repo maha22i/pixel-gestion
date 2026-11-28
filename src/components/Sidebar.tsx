@@ -1,27 +1,28 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   LayoutDashboard, Users, FolderKanban, Package, FileText, Receipt, ScrollText, Wallet, TrendingDown,
   ShieldCheck, Settings, LogOut, Menu, X, UserCircle, CheckSquare, CalendarDays, BarChart3, Sun, Camera, ClipboardCheck,
-  QrCode, CalendarCheck,
+  QrCode, CalendarCheck, ChevronLeft, ChevronRight, Gauge, Briefcase, Landmark, Network, TreePalm, IdCard, Sparkles,
 } from "lucide-react";
 
-type Group = "moi" | "pilotage" | "activite" | "finance";
+type Group = "moi" | "pilotage" | "activite" | "finance" | "admin";
 type Item = { href: string; label: string; icon: keyof typeof ICONS; group?: Group };
-const GROUPS: { key: Group; label: string }[] = [
-  { key: "moi", label: "Mon espace" },
-  { key: "pilotage", label: "Pilotage" },
-  { key: "activite", label: "Activité" },
-  { key: "finance", label: "Ventes & finance" },
+const GROUPS: { key: Group; label: string; icon: typeof Sun }[] = [
+  { key: "moi", label: "Mon espace", icon: UserCircle },
+  { key: "pilotage", label: "Pilotage", icon: Gauge },
+  { key: "activite", label: "Activité", icon: Briefcase },
+  { key: "finance", label: "Ventes & finance", icon: Landmark },
+  { key: "admin", label: "Administration", icon: ShieldCheck },
 ];
 const ICONS = {
   dashboard: LayoutDashboard, clients: Users, projets: FolderKanban, catalogue: Package,
   devis: FileText, factures: Receipt, contrats: ScrollText, paiements: Wallet, depenses: TrendingDown,
   users: ShieldCheck, settings: Settings, profile: UserCircle,
   taches: CheckSquare, planning: CalendarDays, suivi: BarChart3, journee: Sun, materiel: Camera,
-  verification: ClipboardCheck, pointer: QrCode, presences: CalendarCheck,
+  verification: ClipboardCheck, pointer: QrCode, presences: CalendarCheck, schema: Network, conges: TreePalm, rh: IdCard, aicha: Sparkles,
 };
 
 export function Sidebar({
@@ -57,24 +58,62 @@ export function Sidebar({
           href={it.href}
           onClick={() => setOpen(false)}
           aria-current={active ? "page" : undefined}
-          className={`group relative flex items-center gap-3 rounded-lg px-3 py-[6px] text-[14px] font-semibold transition-colors ${
+          className={`group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] font-semibold transition-colors ${
             active
               ? "bg-white/[0.12] text-white"
-              : "text-white/65 hover:bg-white/[0.06] hover:text-white"
+              : "text-white/70 hover:bg-white/[0.06] hover:text-white"
           }`}
         >
-          {active && <span aria-hidden className="absolute -left-3 top-1.5 bottom-1.5 w-[3px] rounded-r-full bg-gold" />}
-          <Icon size={17} className={active ? "text-gold" : "text-white/55 group-hover:text-white"} />
+          {active && <span aria-hidden className="absolute -left-3 top-2 bottom-2 w-[3px] rounded-r-full bg-gold" />}
+          <Icon size={18} className={active ? "text-gold" : "text-white/55 group-hover:text-white"} />
           {it.label}
         </Link>
       );
     });
 
-  const heading = (label: string, first = false) => (
-    <p className={`px-3 pb-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white/35 ${first ? "pt-0" : "pt-3"}`}>{label}</p>
-  );
+  // Rubriques visibles pour cet utilisateur (les pages d'administration forment la dernière).
+  const sections = GROUPS
+    .map((g) => ({ ...g, list: g.key === "admin" ? adminItems : items.filter((it) => (it.group ?? "pilotage") === g.key) }))
+    .filter((g) => g.list.length);
+  const sectionOf = (p: string) =>
+    sections.find((g) => g.list.some((it) => (it.href === "/" ? p === "/" : p.startsWith(it.href))))?.key ?? null;
 
-  const grouped = GROUPS.map((g) => ({ ...g, list: items.filter((it) => (it.group ?? "pilotage") === g.key) })).filter((g) => g.list.length);
+  // Rubrique ouverte : celle de la page courante au chargement, null = liste des rubriques.
+  const [section, setSection] = useState<Group | null>(() => sectionOf(path));
+  // Dernière rubrique affichée, gardée pendant l'animation de retour.
+  const [shown, setShown] = useState<Group | null>(section);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const backRef = useRef<HTMLButtonElement>(null);
+  const lastPath = useRef(path);
+
+  useEffect(() => {
+    if (lastPath.current === path) return;
+    lastPath.current = path;
+    const s = sectionOf(path);
+    if (s) { setSection(s); setShown(s); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path]);
+
+  useEffect(() => {
+    // Le panneau caché ne doit pas être atteignable au clavier.
+    if (rootRef.current) rootRef.current.inert = section !== null;
+    if (panelRef.current) panelRef.current.inert = section === null;
+  }, [section]);
+
+  const openSection = (key: Group) => {
+    setShown(key);
+    setSection(key);
+    window.setTimeout(() => backRef.current?.focus(), 220);
+  };
+  const goBack = () => {
+    const from = section;
+    setSection(null);
+    window.setTimeout(() => rootRef.current?.querySelector<HTMLButtonElement>(`[data-section="${from}"]`)?.focus(), 220);
+  };
+
+  const current = sections.find((g) => g.key === shown) ?? null;
+  const here = sectionOf(path);
 
   return (
     <>
@@ -123,20 +162,69 @@ export function Sidebar({
             <img src="/logo-light.png" alt="Pixel Nomade" className="h-11 w-auto object-contain object-left" />
           </Link>
         </div>
-        <nav className="relative flex-1 space-y-0.5 overflow-y-auto px-3 pb-4 pt-4 [scrollbar-width:thin] lg:pt-1">
-          {grouped.map((g, i) => (
-            <div key={g.key} className="space-y-0.5">
-              {heading(g.label, i === 0)}
-              {nav(g.list)}
+        {sections.length <= 1 ? (
+          <nav className="relative flex-1 space-y-0.5 overflow-y-auto px-3 pb-4 pt-4 lg:pt-1">{nav(sections[0]?.list ?? [])}</nav>
+        ) : (
+          <nav aria-label="Navigation principale" className="relative flex-1 overflow-hidden">
+            <div
+              className={`flex h-full w-[200%] transition-transform duration-200 ease-out motion-reduce:transition-none ${section ? "-translate-x-1/2" : "translate-x-0"}`}
+            >
+              {/* Niveau 1 : les rubriques */}
+              <div ref={rootRef} className="h-full w-1/2 overflow-y-auto px-3 pb-4 pt-4 [scrollbar-width:thin] lg:pt-1">
+                <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-white/35">Rubriques</p>
+                <ul className="space-y-1.5">
+                  {sections.map((g) => {
+                    const Icon = g.icon;
+                    const isHere = here === g.key;
+                    return (
+                      <li key={g.key}>
+                        <button
+                          type="button"
+                          data-section={g.key}
+                          onClick={() => openSection(g.key)}
+                          className={`group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors ${
+                            isHere ? "bg-white/[0.1] ring-1 ring-white/10" : "hover:bg-white/[0.06]"
+                          }`}
+                        >
+                          <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${isHere ? "bg-gold text-navy-900" : "bg-white/[0.08] text-white/80 group-hover:text-white"}`}>
+                            <Icon size={18} />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[15px] font-bold text-white">{g.label}</span>
+                            <span className="block truncate text-xs text-white/45">{g.list.map((it) => it.label).join(" · ")}</span>
+                          </span>
+                          <ChevronRight size={17} className="shrink-0 text-white/35 transition group-hover:translate-x-0.5 group-hover:text-white" />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+
+              {/* Niveau 2 : les pages de la rubrique choisie */}
+              <div ref={panelRef} className="h-full w-1/2 overflow-y-auto px-3 pb-4 pt-4 [scrollbar-width:thin] lg:pt-1">
+                {current && (
+                  <>
+                    <button
+                      ref={backRef}
+                      type="button"
+                      onClick={goBack}
+                      className="mb-3 flex w-full items-center gap-1.5 rounded-lg px-2 py-2 text-sm font-bold text-white/60 transition hover:bg-white/[0.06] hover:text-white"
+                    >
+                      <ChevronLeft size={17} /> Toutes les rubriques
+                    </button>
+                    <div className="mb-2 flex items-center gap-3 px-3">
+                      <span className="grid h-9 w-9 place-items-center rounded-lg bg-gold text-navy-900"><current.icon size={18} /></span>
+                      <h2 className="text-[17px] font-bold text-white">{current.label}</h2>
+                    </div>
+                    <div className="mb-2 h-px bg-gradient-to-r from-gold/50 to-transparent" />
+                    <div className="space-y-0.5">{nav(current.list)}</div>
+                  </>
+                )}
+              </div>
             </div>
-          ))}
-          {adminItems.length > 0 && (
-            <div className="space-y-0.5">
-              {heading("Administration")}
-              {nav(adminItems)}
-            </div>
-          )}
-        </nav>
+          </nav>
+        )}
         <div className="relative flex items-center gap-1 border-t border-white/10 p-3">
           <Link href="/profil" className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-2 py-1.5 transition hover:bg-white/[0.06]">
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gold text-sm font-bold text-navy-900">

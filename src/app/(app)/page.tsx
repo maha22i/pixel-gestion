@@ -100,7 +100,7 @@ export default async function Dashboard() {
         <div className="flex flex-wrap gap-2">
           {can(user, "devis", "write") && <Link href="/devis/nouveau" className="btn-primary"><Plus size={16} /> Devis</Link>}
           {can(user, "factures", "write") && <Link href="/factures/nouveau" className="btn-ghost"><Receipt size={16} /> Facture</Link>}
-          {can(user, "depenses", "write") && <Link href="/depenses?nouveau=1#saisie" className="btn-ghost"><TrendingDown size={16} /> Dépense</Link>}
+          {can(user, "depenses", "write") && <Link href="/depenses?nouveau=1" className="btn-ghost"><TrendingDown size={16} /> Dépense</Link>}
         </div>
       </div>
 
